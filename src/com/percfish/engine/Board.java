@@ -25,7 +25,13 @@ public class Board {
     }
 
     public void loadPfen(String pfen) {
-        // Implement shi here
+        String[] parts = pfen.split(" ");
+        String placement = parts[0];
+
+        for (int i = 1; i < 81; i++) squares[i] = Piece.EMPTY;
+
+        String[] ranks = placement.split("/");
+        int currentRank = 8;
     }
 
     public void makeMove(String move) {
