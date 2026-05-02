@@ -55,7 +55,7 @@ public class Board {
             default -> '?';
         };
 
-        return (Piece.getType(piece)) != 0 ? Character.toUpperCase(c) : c;
+        return (piece & Piece.WHITE) != 0 ? Character.toUpperCase(c) : c;
     }
 
     public String getAsciiBoard() {
