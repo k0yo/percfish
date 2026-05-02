@@ -14,7 +14,7 @@ public final class Piece {
     public static final int D_HORSE = 9;
     public static final int D_KING = 10;
     public static final int ECHO = 11;
-    public static final int VOID = 12;
+    public static final int VOID = 15;
 
     // Colors
     public static final int WHITE = 16;
