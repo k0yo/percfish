@@ -1,10 +1,13 @@
 package com.percfish;
 
 import com.percfish.engine.Board;
+import com.percfish.engine.Move;
+import com.percfish.engine.MoveGenerator;
+import java.util.List;
 import java.util.Scanner;
 
 public class Main {
-    private static Board board = new Board();
+    private static final Board board = new Board();
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
@@ -26,11 +29,21 @@ public class Main {
                 System.out.println("uciok");
             }
             case "isready" -> System.out.println("readyok");
-            case "show" -> System.out.println(board.getAsciiBoard());
+            case "d" -> System.out.println(board.getAsciiBoard());
             case "position" -> handlePosition(parts);
+            case "genmoves" -> {
+                System.out.println("Generating moves...");
+                MoveGenerator moveGenerator = new MoveGenerator();
+                List<Move> moves = moveGenerator.generateMoves(board);
+                for (Move move : moves) {
+                    System.out.println(move.toString());
+                }
+                System.out.println("Total moves: " + moves.size());
+            }
             case "quit" -> System.exit(0);
         }
         // Add "go" logic next
+
     }
 
     private static void handlePosition(String[] args) {

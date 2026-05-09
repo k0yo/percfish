@@ -18,7 +18,7 @@ Perc is played on a **9x9 board** with unique pieces and environmental mechanics
 Current Version: **0.1.0** (Core UCI Protocol & Board Representation)
 
 **Custom Commands:**
-* `show` - Displays the current board state in ASCII format.
+* `d` - Displays the current board state in ASCII format.
 
 ## Author
 * **sembii**

@@ -26,4 +26,13 @@ public final class Piece {
 
     public static int getType(int piece) { return piece & TYPE_MASK; }
     public static int getColor(int piece) { return piece & COLOR_MASK; }
+
+    public static boolean isSlider(int piece) {
+        int type = getType(piece);
+        return switch (type) {
+            case Piece.BISHOP, Piece.CANNON, Piece.FALCON, Piece.HUNTER, Piece.ROOK,
+                 Piece.D_HORSE, Piece.D_KING -> true;
+            default -> false;
+        };
+    }
 }

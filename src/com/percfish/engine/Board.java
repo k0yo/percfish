@@ -1,16 +1,24 @@
 package com.percfish.engine;
 
 public class Board {
-    public static final String START_PFEN = "r1n1k1n1r/1h1cec1f1/ppp1b1ppp/4b4/3vvv3/4B4/PPP1B1PPP/1F1CEC1H1/R1N1K1N1R w - 0 1";
+    public static final String START_PFEN = "r1n1k1n1r/1h1cec1f1/ppp1b1ppp/4b4/3vvv3/4B4/PPP1B1PPP/1F1CEC1H1/R1N1K1N1R w -";
 
     private final int[] squares;
-    private boolean whiteToMove;
+    public boolean isWhiteToMove;
     private int echoPower;
 
     public Board() {
         this.squares = new int[81];
-        this.whiteToMove = true;
+        this.isWhiteToMove = true;
         this.echoPower = Piece.EMPTY;
+    }
+
+    public int getSquare(int index) {
+        return squares[index];
+    }
+
+    public int getEchoPower() {
+        return echoPower;
     }
 
     private int charToPiece(char c) {
@@ -80,16 +88,16 @@ public class Board {
 
         builder.append("  +---------------------------+\n");
         builder.append("    a  b  c  d  e  f  g  h  i\n");
-        builder.append("Turn: ").append(whiteToMove ? "White" : "Black").append("\n");
+        builder.append("Turn: ").append(isWhiteToMove ? "White" : "Black").append("\n");
         builder.append("Echo Power: ").append(pieceToChar(echoPower)).append("\n");
+        builder.append("PFEN: ").append(toPfen()).append("\n");
 
         return builder.toString();
     }
 
     /**
      * Loads PFEN (Perc FEN) string into the board state.
-     * Example PFEN: "r1n1k1n1r/.../9/R1N1K1N1R w C 0 1"
-     * (regular FEN but castling rights and en passant square are replaced with last piece moved char (lowercase))
+     * Example PFEN: "r1n1k1n1r/.../9/R1N1K1N1R w c"
      */
     public void loadPfen(String pfen) {
         String[] parts = pfen.split(" ");
@@ -116,13 +124,44 @@ public class Board {
             currentRank--;
         }
 
-        this.whiteToMove = parts[1].equals("w");
+        this.isWhiteToMove = parts[1].equals("w");
 
         if (!parts[2].equals("-")) {
             this.echoPower = Piece.getType(charToPiece(parts[2].charAt(0)));
         } else {
             this.echoPower = Piece.EMPTY;
         }
+    }
+
+    public String toPfen() {
+        StringBuilder pfen = new StringBuilder();
+
+        for (int rank = 8; rank >= 0; rank--) {
+            int emptyCount = 0;
+            for (int file = 0; file < 9; file++) {
+                int index = rank * 9 + file;
+                int piece = squares[index];
+
+                if (piece == Piece.EMPTY) {
+                    emptyCount++;
+                } else if (Piece.getType(piece) == Piece.VOID) {
+                    if (emptyCount > 0) pfen.append(emptyCount);
+                    pfen.append("v");
+                    emptyCount = 0;
+                } else {
+                    if (emptyCount > 0) pfen.append(emptyCount);
+                    pfen.append(pieceToChar(piece));
+                    emptyCount = 0;
+                }
+            }
+            if (emptyCount > 0) pfen.append(emptyCount);
+            if (rank > 0) pfen.append("/");
+        }
+
+        String turn = isWhiteToMove ? "w" : "b";
+        String echo = (echoPower == Piece.EMPTY) ? "-" : String.valueOf(pieceToChar(echoPower)).toLowerCase();
+
+        return pfen + " " + turn + " " + echo;
     }
 
     public void makeMove(String move) {
