@@ -15,10 +15,11 @@ Perc is played on a **9x9 board** with unique pieces and environmental mechanics
 * **Stalemate:** In Perc, stalemate is a **loss** for the player with no legal moves.
 
 ## Development Status
-Current Version: **0.1.0** (Core UCI Protocol & Board Representation)
+Current Version: **0.1.0**
 
 **Custom Commands:**
 * `d` - Displays the current board state in ASCII format.
+* `genmoves` - Prints all legal moves for the current board state.
 
 ## Author
 * **sembii**
