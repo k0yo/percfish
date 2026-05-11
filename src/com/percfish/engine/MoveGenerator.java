@@ -12,6 +12,9 @@ public class MoveGenerator {
     private static final int[] ALL_DIRS = {0, 1, 2, 3, 4, 5, 6, 7};
     private static final int[] WHITE_FALCON = {1, 4, 6};
     private static final int[] WHITE_HUNTER = {0, 5, 7};
+    private static final int[] PAWN_PROMOTIONS = {
+            Piece.KNIGHT, Piece.BISHOP, Piece.CANNON, Piece.FALCON, Piece.HUNTER, Piece.ROOK
+    };
 
     static {
         precompute();
@@ -40,40 +43,40 @@ public class MoveGenerator {
             int piece = board.getSquare(i);
 
             if (piece != Piece.EMPTY && Piece.getColor(piece) == (board.isWhiteToMove ? Piece.WHITE : Piece.BLACK)) {
-                addMovesForPiece(i, piece, board, moves);
+                addMovesForPiece(i, piece, board, moves, true);
             }
 
         }
         return moves;
     }
 
-    private void addMovesForPiece(int startSquare, int piece, Board board, List<Move> moves) {
+    private void addMovesForPiece(int startSquare, int piece, Board board, List<Move> moves, boolean allowPromotions) {
         switch (Piece.getType(piece)) {
             case Piece.CANNON -> {
-                addSlidingMoves(startSquare, piece, board, moves);
+                addSlidingMoves(startSquare, piece, board, moves, allowPromotions);
                 addCannonCaptureMoves(startSquare, piece, board, moves);
             }
             case Piece.KING -> addKingMoves(startSquare, piece, board, moves);
             case Piece.KNIGHT -> addKnightMoves(startSquare, piece, board, moves);
-            case Piece.PAWN -> addPawnMoves(startSquare, piece, board, moves);
+            case Piece.PAWN -> addPawnMoves(startSquare, piece, board, moves, allowPromotions);
             case Piece.ECHO -> addEchoMoves(startSquare, piece, board, moves);
             case Piece.D_KING -> {
-                addSlidingMoves(startSquare, piece, board, moves);
-                addStepMoves(startSquare, piece, board, moves, BISHOP_DIRS);
+                addSlidingMoves(startSquare, piece, board, moves, allowPromotions);
+                addStepMoves(startSquare, piece, board, moves, BISHOP_DIRS, allowPromotions);
             }
             case Piece.D_HORSE -> {
-                addSlidingMoves(startSquare, piece, board, moves);
-                addStepMoves(startSquare, piece, board, moves, ROOK_DIRS);
+                addSlidingMoves(startSquare, piece, board, moves, allowPromotions);
+                addStepMoves(startSquare, piece, board, moves, ROOK_DIRS, allowPromotions);
             }
             default -> {
                 if (Piece.isSlider(piece)) {
-                    addSlidingMoves(startSquare, piece, board, moves);
+                    addSlidingMoves(startSquare, piece, board, moves, allowPromotions);
                 }
             }
         }
     }
 
-    private void addSlidingMoves(int startSquare, int piece, Board board, List<Move> moves) {
+    private void addSlidingMoves(int startSquare, int piece, Board board, List<Move> moves, boolean allowPromotions) {
         int type = Piece.getType(piece);
         int color = Piece.getColor(piece);
         int[] directions = getDirectionsForPiece(piece);
@@ -90,7 +93,7 @@ public class MoveGenerator {
                 // Skip if it's a capture and the piece is a Cannon
                 boolean isCapture = Piece.getColor(pieceOnTarget) != Piece.EMPTY;
                 if (!(isCapture && type == Piece.CANNON)) {
-                    moves.add(new Move(startSquare, targetSquare));
+                    addMove(startSquare, targetSquare, piece, moves, allowPromotions);
                 }
 
                 if (isCapture) {
@@ -100,7 +103,7 @@ public class MoveGenerator {
         }
     }
 
-    private void addStepMoves(int startSquare, int piece, Board board, List<Move> moves, int[] directions) {
+    private void addStepMoves(int startSquare, int piece, Board board, List<Move> moves, int[] directions, boolean allowPromotions) {
         int color = Piece.getColor(piece);
         int startRank = startSquare / 9;
         int startFile = startSquare % 9;
@@ -129,7 +132,7 @@ public class MoveGenerator {
                 continue;
             }
 
-            moves.add(new Move(startSquare, targetSquare));
+            addMove(startSquare, targetSquare, piece, moves, allowPromotions);
         }
     }
 
@@ -170,11 +173,11 @@ public class MoveGenerator {
         }
 
         int echoPiece = Piece.getColor(piece) | echoPower;
-        addMovesForPiece(startSquare, echoPiece, board, moves);
+        addMovesForPiece(startSquare, echoPiece, board, moves, false);
     }
 
     private void addKingMoves(int startSquare, int piece, Board board, List<Move> moves) {
-        addStepMoves(startSquare, piece, board, moves, ALL_DIRS);
+        addStepMoves(startSquare, piece, board, moves, ALL_DIRS, false);
     }
 
     private static final int[] KNIGHT_OFFSETS = {-19, -17, -11, -7, 7, 11, 17, 19};
@@ -211,11 +214,11 @@ public class MoveGenerator {
                 continue;
             }
 
-            moves.add(new Move(startSquare, targetSquare));
+            addMove(startSquare, targetSquare, piece, moves, false);
         }
     }
 
-    private void addPawnMoves(int startSquare, int piece, Board board, List<Move> moves) {
+    private void addPawnMoves(int startSquare, int piece, Board board, List<Move> moves, boolean allowPromotions) {
         int color = Piece.getColor(piece);
         int forwardOffset = (color == Piece.WHITE) ? 9 : -9;
 
@@ -232,8 +235,59 @@ public class MoveGenerator {
                 return;
             }
 
-            moves.add(new Move(startSquare, targetSquare));
+            addMove(startSquare, targetSquare, piece, moves, allowPromotions);
         }
+    }
+
+    private void addMove(int startSquare, int targetSquare, int piece, List<Move> moves, boolean allowPromotions) {
+        if (!allowPromotions) {
+            moves.add(new Move(startSquare, targetSquare));
+            return;
+        }
+
+        int color = Piece.getColor(piece);
+
+        switch (Piece.getType(piece)) {
+            case Piece.PAWN -> {
+                if (!isPawnPromotionRank(targetSquare, color)) {
+                    moves.add(new Move(startSquare, targetSquare));
+                    return;
+                }
+
+                for (int promotionType : PAWN_PROMOTIONS) {
+                    moves.add(new Move(startSquare, targetSquare, promotionType));
+                }
+            }
+            case Piece.ROOK -> {
+                if (!isLastRank(targetSquare, color)) {
+                    moves.add(new Move(startSquare, targetSquare));
+                    return;
+                }
+
+                moves.add(new Move(startSquare, targetSquare));
+                moves.add(new Move(startSquare, targetSquare, Piece.D_KING));
+            }
+            case Piece.BISHOP -> {
+                if (!isLastRank(targetSquare, color)) {
+                    moves.add(new Move(startSquare, targetSquare));
+                    return;
+                }
+
+                moves.add(new Move(startSquare, targetSquare));
+                moves.add(new Move(startSquare, targetSquare, Piece.D_HORSE));
+            }
+            default -> moves.add(new Move(startSquare, targetSquare));
+        }
+    }
+
+    private boolean isPawnPromotionRank(int square, int color) {
+        int rank = square / 9;
+        return color == Piece.WHITE ? rank >= 6 : rank <= 2;
+    }
+
+    private boolean isLastRank(int square, int color) {
+        int rank = square / 9;
+        return color == Piece.WHITE ? rank == 8 : rank == 0;
     }
 
     private int[] getDirectionsForPiece(int piece) {

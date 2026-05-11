@@ -165,6 +165,20 @@ public class Board {
     }
 
     public void makeMove(String move) {
-        // Move execution and echoPower update
+        makeMove(Move.fromString(move));
+    }
+
+    public void makeMove(Move move) {
+        int movedPiece = squares[move.from()];
+        int movedType = Piece.getType(movedPiece);
+        int movedColor = Piece.getColor(movedPiece);
+
+        int newEchoPower = movedType == Piece.ECHO ? echoPower : movedType;
+        int finalType = move.isPromotion() ? move.promotionType() : movedType;
+
+        squares[move.to()] = movedColor | finalType;
+        squares[move.from()] = Piece.EMPTY;
+        echoPower = newEchoPower;
+        isWhiteToMove = !isWhiteToMove;
     }
 }

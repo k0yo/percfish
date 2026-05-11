@@ -50,14 +50,32 @@ public class Main {
         // Command: position [startpos | fen ...] [moves ...]
         if (args.length < 2) return;
 
+        int moveStartIndex = -1;
+
         if (args[1].equals("startpos")) {
             board.loadPfen(Board.START_PFEN);
+            moveStartIndex = args.length > 2 && args[2].equals("moves") ? 3 : -1;
         } else if (args[1].equals("fen")) {
-            StringBuilder sb = new StringBuilder();
+            int fenEndIndex = args.length;
             for (int i = 2; i < args.length; i++) {
-                sb.append(args[i]).append(i == args.length - 1 ? "" : " ");
+                if (args[i].equals("moves")) {
+                    fenEndIndex = i;
+                    moveStartIndex = i + 1;
+                    break;
+                }
+            }
+
+            StringBuilder sb = new StringBuilder();
+            for (int i = 2; i < fenEndIndex; i++) {
+                sb.append(args[i]).append(i == fenEndIndex - 1 ? "" : " ");
             }
             board.loadPfen(sb.toString());
+        }
+
+        if (moveStartIndex != -1) {
+            for (int i = moveStartIndex; i < args.length; i++) {
+                board.makeMove(args[i]);
             }
+        }
     }
 }
