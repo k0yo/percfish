@@ -5,7 +5,7 @@ An UCI-compatible chess engine for the **Perc** variant, written in Java.
 ## Development Status
 Current Version: **0.4.0** _(Full legal move generation)_
 
-## Commands:
+### Commands:
 * `uci` - Prints engine identification and `uciok`.
 * `isready` - Prints `readyok`.
 * `position startpos [moves ...]` - Loads the starting position and optionally applies moves.
