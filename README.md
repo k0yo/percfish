@@ -17,9 +17,14 @@ Perc is played on a **9x9 board** with unique pieces and environmental mechanics
 ## Development Status
 Current Version: **0.2.0** (Pseudo-legal move generation)
 
-**Custom Commands:**
+**Commands:**
+* `uci` - Prints engine identification and `uciok`.
+* `isready` - Prints `readyok`.
+* `position startpos [moves ...]` - Loads the starting position and optionally applies moves.
+* `position fen <pfen> [moves ...]` - Loads a PFEN position and optionally applies moves.
 * `d` - Displays the current board state in ASCII format.
-* `genmoves` - Prints all legal moves for the current board state.
+* `genmoves` - Prints all pseudo-legal moves for the current board state.
+* `quit` - Exits the engine.
 
 ## Author
 * **sembii**

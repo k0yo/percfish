@@ -164,12 +164,16 @@ public class Board {
         return pfen + " " + turn + " " + echo;
     }
 
-    public void makeMove(String move) {
-        makeMove(Move.fromString(move));
+    public MoveState makeMove(String move) {
+        return makeMove(Move.fromString(move));
     }
 
-    public void makeMove(Move move) {
+    public MoveState makeMove(Move move) {
         int movedPiece = squares[move.from()];
+        int capturedPiece = squares[move.to()];
+        int oldEchoPower = echoPower;
+        boolean oldWhiteToMove = isWhiteToMove;
+
         int movedType = Piece.getType(movedPiece);
         int movedColor = Piece.getColor(movedPiece);
 
@@ -180,5 +184,16 @@ public class Board {
         squares[move.from()] = Piece.EMPTY;
         echoPower = newEchoPower;
         isWhiteToMove = !isWhiteToMove;
+
+        return new MoveState(move, movedPiece, capturedPiece, oldEchoPower, oldWhiteToMove);
+    }
+
+    public void unmakeMove(MoveState state) {
+        Move move = state.move();
+
+        squares[move.from()] = state.movedPiece();
+        squares[move.to()] = state.capturedPiece();
+        echoPower = state.oldEchoPower();
+        isWhiteToMove = state.oldWhiteToMove();
     }
 }
