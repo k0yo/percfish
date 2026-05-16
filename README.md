@@ -23,7 +23,7 @@ Current Version: **0.4.0** (Full legal move generation)
 * `position startpos [moves ...]` - Loads the starting position and optionally applies moves.
 * `position fen <pfen> [moves ...]` - Loads a PFEN position and optionally applies moves.
 * `d` - Displays the current board state in ASCII format.
-* `genmoves` - Prints all pseudo-legal moves for the current board state.
+* `genmoves` - Prints all legal moves for the current board state.
 * `quit` - Exits the engine.
 
 ## Author
