@@ -34,7 +34,7 @@ public class Main {
             case "genmoves" -> {
                 System.out.println("Generating moves...");
                 MoveGenerator moveGenerator = new MoveGenerator();
-                List<Move> moves = moveGenerator.generateMoves(board);
+                List<Move> moves = moveGenerator.generateLegalMoves(board);
                 for (Move move : moves) {
                     System.out.println(move.toString());
                 }

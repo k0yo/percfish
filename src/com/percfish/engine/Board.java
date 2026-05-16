@@ -21,6 +21,18 @@ public class Board {
         return echoPower;
     }
 
+    public int findKing(int color) {
+        for (int i = 0; i < 81; i++) {
+            int piece = squares[i];
+
+            if (Piece.getType(piece) == Piece.KING && Piece.getColor(piece) == color) {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     private int charToPiece(char c) {
         int color = Character.isUpperCase(c) ? Piece.WHITE : Piece.BLACK;
         char lower = Character.toLowerCase(c);

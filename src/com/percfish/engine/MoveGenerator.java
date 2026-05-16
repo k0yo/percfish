@@ -36,7 +36,7 @@ public class MoveGenerator {
         }
     }
 
-    public List<Move> generateMoves(Board board) {
+    public List<Move> generatePseudoLegalMoves(Board board) {
         List<Move> moves = new ArrayList<>();
 
         for (int i = 0; i < 81; i++) {
@@ -48,6 +48,171 @@ public class MoveGenerator {
 
         }
         return moves;
+    }
+
+    public List<Move> generateLegalMoves(Board board) {
+        int movingColor = board.isWhiteToMove ? Piece.WHITE : Piece.BLACK;
+        List<Move> legalMoves = new ArrayList<>();
+
+        for (Move move : generatePseudoLegalMoves(board)) {
+            MoveState state = board.makeMove(move);
+
+            if (!isInCheck(board, movingColor)) {
+                legalMoves.add(move);
+            }
+
+            board.unmakeMove(state);
+        }
+
+        return legalMoves;
+    }
+
+    public boolean isSideToMoveLost(Board board) {
+        return generateLegalMoves(board).isEmpty();
+    }
+
+    public boolean isSquareAttacked(Board board, int square, int byColor) {
+        for (int i = 0; i < 81; i++) {
+            int piece = board.getSquare(i);
+
+            if (piece == Piece.EMPTY || Piece.getColor(piece) != byColor) {
+                continue;
+            }
+
+            if (pieceAttacksSquare(i, piece, square, board)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public boolean isInCheck(Board board, int color) {
+        int kingSquare = board.findKing(color);
+
+        if (kingSquare == -1) {
+            throw new IllegalStateException("No king found for color: " + color);
+        }
+
+        int opponentColor = color == Piece.WHITE ? Piece.BLACK : Piece.WHITE;
+        return isSquareAttacked(board, kingSquare, opponentColor);
+    }
+
+    private boolean pieceAttacksSquare(int startSquare, int piece, int targetSquare, Board board) {
+        int type = Piece.getType(piece);
+
+        if (type == Piece.ECHO) {
+            type = board.getEchoPower();
+
+            if (type == Piece.EMPTY || type == Piece.ECHO) {
+                return false;
+            }
+        }
+
+        int attackPiece = Piece.getColor(piece) | type;
+
+        return switch (type) {
+            case Piece.PAWN -> pawnAttacksSquare(startSquare, attackPiece, targetSquare);
+            case Piece.KNIGHT -> knightAttacksSquare(startSquare, targetSquare);
+            case Piece.KING -> stepAttacksSquare(startSquare, targetSquare, ALL_DIRS);
+            case Piece.CANNON -> cannonAttacksSquare(startSquare, targetSquare, board);
+            case Piece.D_KING -> slidingAttacksSquare(startSquare, attackPiece, targetSquare, board)
+                    || stepAttacksSquare(startSquare, targetSquare, BISHOP_DIRS);
+            case Piece.D_HORSE -> slidingAttacksSquare(startSquare, attackPiece, targetSquare, board)
+                    || stepAttacksSquare(startSquare, targetSquare, ROOK_DIRS);
+            default -> Piece.isSlider(attackPiece)
+                    && slidingAttacksSquare(startSquare, attackPiece, targetSquare, board);
+        };
+    }
+
+    private boolean pawnAttacksSquare(int startSquare, int piece, int targetSquare) {
+        int forwardOffset = Piece.getColor(piece) == Piece.WHITE ? 9 : -9;
+        return startSquare + forwardOffset == targetSquare;
+    }
+
+    private boolean knightAttacksSquare(int startSquare, int targetSquare) {
+        int startRank = startSquare / 9;
+        int startFile = startSquare % 9;
+        int targetRank = targetSquare / 9;
+        int targetFile = targetSquare % 9;
+
+        int rankDiff = Math.abs(startRank - targetRank);
+        int fileDiff = Math.abs(startFile - targetFile);
+
+        return (rankDiff == 2 && fileDiff == 1) || (rankDiff == 1 && fileDiff == 2);
+    }
+
+    private boolean stepAttacksSquare(int startSquare, int targetSquare, int[] directions) {
+        for (int dirIndex : directions) {
+            int stepSquare = startSquare + DIRECTION_OFFSETS[dirIndex];
+
+            if (stepSquare == targetSquare && isOneStepAway(startSquare, targetSquare)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isOneStepAway(int startSquare, int targetSquare) {
+        int startRank = startSquare / 9;
+        int startFile = startSquare % 9;
+        int targetRank = targetSquare / 9;
+        int targetFile = targetSquare % 9;
+
+        return Math.abs(startRank - targetRank) <= 1 && Math.abs(startFile - targetFile) <= 1;
+    }
+
+    private boolean slidingAttacksSquare(int startSquare, int piece, int targetSquare, Board board) {
+        for (int dirIndex : getDirectionsForPiece(piece)) {
+            for (int n = 0; n < NUM_SQUARES_TO_EDGE[startSquare][dirIndex]; n++) {
+                int currentSquare = startSquare + DIRECTION_OFFSETS[dirIndex] * (n + 1);
+                int pieceOnCurrent = board.getSquare(currentSquare);
+
+                if (Piece.getType(pieceOnCurrent) == Piece.VOID) {
+                    break;
+                }
+
+                if (currentSquare == targetSquare) {
+                    return true;
+                }
+
+                if (pieceOnCurrent != Piece.EMPTY) {
+                    break;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private boolean cannonAttacksSquare(int startSquare, int targetSquare, Board board) {
+        for (int dirIndex : ROOK_DIRS) {
+            boolean foundScreen = false;
+
+            for (int n = 0; n < NUM_SQUARES_TO_EDGE[startSquare][dirIndex]; n++) {
+                int currentSquare = startSquare + DIRECTION_OFFSETS[dirIndex] * (n + 1);
+                int pieceOnCurrent = board.getSquare(currentSquare);
+
+                if (Piece.getType(pieceOnCurrent) == Piece.VOID) {
+                    break;
+                }
+
+                if (currentSquare == targetSquare) {
+                    return foundScreen;
+                }
+
+                if (pieceOnCurrent != Piece.EMPTY) {
+                    if (foundScreen) {
+                        break;
+                    }
+
+                    foundScreen = true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private void addMovesForPiece(int startSquare, int piece, Board board, List<Move> moves, boolean allowPromotions) {
