@@ -55,6 +55,10 @@ public class MoveGenerator {
         List<Move> legalMoves = new ArrayList<>();
 
         for (Move move : generatePseudoLegalMoves(board)) {
+            if (Piece.getType(board.getSquare(move.to())) == Piece.KING) {
+                continue;
+            }
+
             MoveState state = board.makeMove(move);
 
             if (!isInCheck(board, movingColor)) {
@@ -69,6 +73,26 @@ public class MoveGenerator {
 
     public boolean isSideToMoveLost(Board board) {
         return generateLegalMoves(board).isEmpty();
+    }
+
+    public long perft(Board board, int depth) {
+        if (depth < 0) {
+            throw new IllegalArgumentException("Perft depth cannot be negative: " + depth);
+        }
+
+        if (depth == 0) {
+            return 1;
+        }
+
+        long nodes = 0;
+
+        for (Move move : generateLegalMoves(board)) {
+            MoveState state = board.makeMove(move);
+            nodes += perft(board, depth - 1);
+            board.unmakeMove(state);
+        }
+
+        return nodes;
     }
 
     public boolean isSquareAttacked(Board board, int square, int byColor) {

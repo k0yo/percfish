@@ -176,6 +176,10 @@ public class Board {
         return pfen + " " + turn + " " + echo;
     }
 
+    public String repetitionKey() {
+        return toPfen();
+    }
+
     public MoveState makeMove(String move) {
         return makeMove(Move.fromString(move));
     }

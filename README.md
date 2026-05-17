@@ -12,6 +12,8 @@ Current Version: **0.4.0** _(Full legal move generation)_
 * `position fen <pfen> [moves ...]` - Loads a PFEN position and optionally applies moves.
 * `d` - Displays the current board state in ASCII format.
 * `genmoves` - Prints all legal moves for the current board state.
+* `go perft <depth>` - Counts legal move-tree nodes to the given depth.
+* `repetition` - Prints the current position's repetition count and whether it is a threefold repetition.
 * `quit` - Exits the engine.
 
 ## The Perc Variant
