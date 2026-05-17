@@ -1,6 +1,7 @@
 package com.percfish;
 
 import com.percfish.engine.Board;
+import com.percfish.engine.GameResult;
 import com.percfish.engine.Move;
 import com.percfish.engine.MoveGenerator;
 import com.percfish.engine.PositionHistory;
@@ -33,9 +34,10 @@ public class Main {
             case "isready" -> System.out.println("readyok");
             case "d" -> System.out.println(board.getAsciiBoard());
             case "position" -> handlePosition(parts);
-            case "repetition" -> {
-                System.out.println("Repetition count: " + positionHistory.getCount(board));
-                System.out.println("Threefold repetition: " + positionHistory.isThreefoldRepetition(board));
+            case "result" -> {
+                MoveGenerator moveGenerator = new MoveGenerator();
+                GameResult gameResult = moveGenerator.getGameResult(board, positionHistory);
+                System.out.println("Game result: " + gameResult);
             }
             case "go" -> handleGo(parts);
             case "genmoves" -> {

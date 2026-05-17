@@ -13,7 +13,7 @@ Current Version: **0.4.0** _(Full legal move generation)_
 * `d` - Displays the current board state in ASCII format.
 * `genmoves` - Prints all legal moves for the current board state.
 * `go perft <depth>` - Counts legal move-tree nodes to the given depth.
-* `repetition` - Prints the current position's repetition count and whether it is a threefold repetition.
+* `result` - Prints the current game result (`ONGOING`, `WHITE_WINS`, `BLACK_WINS`, or `DRAW`).
 * `quit` - Exits the engine.
 
 ## The Perc Variant

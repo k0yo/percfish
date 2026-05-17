@@ -75,6 +75,18 @@ public class MoveGenerator {
         return generateLegalMoves(board).isEmpty();
     }
 
+    public GameResult getGameResult(Board board, PositionHistory positionHistory) {
+        if (positionHistory != null && positionHistory.isThreefoldRepetition(board)) {
+            return GameResult.DRAW;
+        }
+
+        if (!isSideToMoveLost(board)) {
+            return GameResult.ONGOING;
+        }
+
+        return board.isWhiteToMove ? GameResult.BLACK_WINS : GameResult.WHITE_WINS;
+    }
+
     public long perft(Board board, int depth) {
         if (depth < 0) {
             throw new IllegalArgumentException("Perft depth cannot be negative: " + depth);
