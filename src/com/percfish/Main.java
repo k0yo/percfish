@@ -1,6 +1,7 @@
 package com.percfish;
 
 import com.percfish.engine.Board;
+import com.percfish.engine.Evaluator;
 import com.percfish.engine.GameResult;
 import com.percfish.engine.Move;
 import com.percfish.engine.MoveGenerator;
@@ -34,6 +35,11 @@ public class Main {
             case "isready" -> System.out.println("readyok");
             case "d" -> System.out.println(board.getAsciiBoard());
             case "position" -> handlePosition(parts);
+            case "eval" -> {
+                Evaluator evaluator = new Evaluator();
+                double eval = evaluator.evaluateWhitePerspective(board) / 100.0;
+                System.out.printf("Evaluation: %.1f%n", eval);
+            }
             case "result" -> {
                 MoveGenerator moveGenerator = new MoveGenerator();
                 GameResult gameResult = moveGenerator.getGameResult(board, positionHistory);

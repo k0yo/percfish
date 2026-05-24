@@ -1,0 +1,46 @@
+package com.percfish.engine;
+
+public class Evaluator {
+    private static final int[] PIECE_VALUES = new int[16];
+
+    static {
+        PIECE_VALUES[Piece.PAWN] = 100;
+        PIECE_VALUES[Piece.KNIGHT] = 400;
+        PIECE_VALUES[Piece.BISHOP] = 325;
+        PIECE_VALUES[Piece.CANNON] = 350;
+        PIECE_VALUES[Piece.FALCON] = 375;
+        PIECE_VALUES[Piece.HUNTER] = 375;
+        PIECE_VALUES[Piece.ROOK] = 650;
+        PIECE_VALUES[Piece.D_HORSE] = 750;
+        PIECE_VALUES[Piece.D_KING] = 850;
+        PIECE_VALUES[Piece.ECHO] = 400;
+    }
+
+    public int evaluate(Board board) {
+        int score = evaluateWhitePerspective(board);
+        return board.isWhiteToMove ? score : -score;
+    }
+
+    public int evaluateWhitePerspective(Board board) {
+        int score = 0;
+
+        for (int i = 0; i < 81; i++) {
+            int piece = board.getSquare(i);
+            int type = Piece.getType(piece);
+
+            if (piece == Piece.EMPTY || type == Piece.VOID || type == Piece.KING) {
+                continue;
+            }
+
+            int value = PIECE_VALUES[type];
+
+            if (Piece.getColor(piece) == Piece.WHITE) {
+                score += value;
+            } else {
+                score -= value;
+            }
+        }
+
+        return score;
+    }
+}

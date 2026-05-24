@@ -5,12 +5,26 @@ An UCI-compatible chess engine for the **Perc** variant, written in Java.
 ## Development Status
 Current Version: **0.4.0** _(Full legal move generation)_
 
+## Usage
+
+Build:
+```bash
+mkdir -p out/production/percfish
+javac -d out/production/percfish src/com/percfish/Main.java src/com/percfish/engine/*.java
+```
+
+Run:
+```bash
+java -cp out/production/percfish com.percfish.Main
+```
+
 ### Commands:
 * `uci` - Prints engine identification and `uciok`.
 * `isready` - Prints `readyok`.
 * `position startpos [moves ...]` - Loads the starting position and optionally applies moves.
 * `position fen <pfen> [moves ...]` - Loads a PFEN position and optionally applies moves.
 * `d` - Displays the current board state in ASCII format.
+* `eval` - Prints the current material evaluation from White's perspective.
 * `genmoves` - Prints all legal moves for the current board state.
 * `go perft <depth>` - Counts legal move-tree nodes to the given depth.
 * `result` - Prints the current game result (`ONGOING`, `WHITE_WINS`, `BLACK_WINS`, or `DRAW`).
