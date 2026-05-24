@@ -11,9 +11,9 @@ public class Evaluator {
         PIECE_VALUES[Piece.FALCON] = 375;
         PIECE_VALUES[Piece.HUNTER] = 375;
         PIECE_VALUES[Piece.ROOK] = 650;
-        PIECE_VALUES[Piece.D_HORSE] = 750;
-        PIECE_VALUES[Piece.D_KING] = 850;
-        PIECE_VALUES[Piece.ECHO] = 400;
+        PIECE_VALUES[Piece.D_HORSE] = 690;
+        PIECE_VALUES[Piece.D_KING] = 750;
+        PIECE_VALUES[Piece.ECHO] = 350;
     }
 
     public int evaluate(Board board) {
