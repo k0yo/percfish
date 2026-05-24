@@ -1,6 +1,7 @@
 package com.percfish.engine;
 
 public class Evaluator {
+    private static final int TEMPO_BONUS = 10;
     private static final int[] PIECE_VALUES = new int[16];
 
     static {
@@ -18,6 +19,7 @@ public class Evaluator {
 
     public int evaluate(Board board) {
         int score = evaluateWhitePerspective(board);
+        score += board.isWhiteToMove ? TEMPO_BONUS : -TEMPO_BONUS;
         return board.isWhiteToMove ? score : -score;
     }
 
