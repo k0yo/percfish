@@ -5,7 +5,7 @@ An UCI-compatible chess engine for the **Perc** variant, written in Java.
 ## Development Status
 Current Version: **0.0.x** _(Legal move generation, perft, repetition tracking, eval, random bot)_
 
-Versioning follows SemVer. Rough ladder:
+Rough ladder:
 * **v0.1.0** - First working search `go` (even 1-ply), returns `bestmove`.
 * **v0.2.0** - Iterative deepening + basic time controls.
 * **v0.3.0** - Stable repetition/draw handling in play and search + small regression test suite.
