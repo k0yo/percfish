@@ -5,6 +5,7 @@ public class Evaluator {
     private static final int MOBILITY_BONUS_PER_MOVE = 2;
     public static final int[] PIECE_VALUES = new int[16];
     public static final int KING_VALUE = 10000;
+    private final MoveGenerator moveGenerator = new MoveGenerator();
 
     static {
         PIECE_VALUES[Piece.PAWN] = 100;
@@ -50,7 +51,6 @@ public class Evaluator {
     }
 
     private int evaluateMobilityWhitePerspective(Board board) {
-        MoveGenerator moveGenerator = new MoveGenerator();
         boolean oldWhiteToMove = board.isWhiteToMove;
 
         board.isWhiteToMove = true;

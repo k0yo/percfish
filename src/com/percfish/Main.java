@@ -19,6 +19,7 @@ public class Main {
 
     private static Thread searchThread = null;
     private static final Object searchLock = new Object();
+    private static volatile long searchStartNanos;
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
@@ -180,6 +181,7 @@ public class Main {
     private static void handleSearchIterative(int depth, long movetimeMs) {
         synchronized (searchLock) {
             searchThread = new Thread(() -> {
+                searchStartNanos = System.nanoTime();
                 Searcher.SearchResult result = searcher.searchIterative(board, depth, movetimeMs, Main::printSearchInfo);
                 System.out.println("bestmove " + (result.bestMove() == null ? "0000" : result.bestMove()));
             });
@@ -188,7 +190,10 @@ public class Main {
     }
 
     private static void printSearchInfo(Searcher.SearchResult result) {
-        System.out.println("info depth " + result.depth() + " score cp " + result.score());
+        long elapsedMs = Math.max(1L, (System.nanoTime() - searchStartNanos) / 1_000_000L);
+        long nps = (result.nodes() * 1000L) / elapsedMs;
+        System.out.println("info depth " + result.depth() + " score cp " + result.score() +
+                " nodes " + result.nodes() + " nps " + nps + " tthits " + result.ttHits());
     }
 
     private static void handlePosition(String[] args) {

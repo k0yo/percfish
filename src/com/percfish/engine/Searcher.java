@@ -6,7 +6,6 @@ import java.util.function.Consumer;
 public class Searcher {
     private static final int MATE_SCORE = 1_000_000;
     private static final int INFINITY = MATE_SCORE + 1_000;
-    private static final int MAX_TIMED_DEPTH = 100;
     private static final long NO_DEADLINE = Long.MAX_VALUE;
 
     private final Evaluator evaluator = new Evaluator();
@@ -15,6 +14,8 @@ public class Searcher {
     private final TranspositionTable tt = new TranspositionTable(64); // 64MB default
 
     private volatile boolean stop = false;
+    private long nodes;
+    private long ttHits;
 
     public void stop() {
         stop = true;
@@ -32,12 +33,12 @@ public class Searcher {
         List<Move> legalMoves = moveGenerator.generateLegalMoves(board);
 
         if (legalMoves.isEmpty()) {
-            return new SearchResult(null, -MATE_SCORE, 0);
+            return new SearchResult(null, -MATE_SCORE, 0, 0, 0);
         }
 
         Move pvMove = null;
         orderMoves(board, legalMoves, pvMove, null);
-        SearchResult bestCompletedResult = new SearchResult(legalMoves.getFirst(), evaluator.evaluate(board), 0);
+        SearchResult bestCompletedResult = new SearchResult(legalMoves.getFirst(), evaluator.evaluate(board), 0, 0, 0);
 
         for (int depth = 1; depth <= maxDepth; depth++) {
             try {
@@ -59,14 +60,17 @@ public class Searcher {
 
     private SearchResult search(Board board, int depth, long deadlineNanos, Move pvMoveHint) {
         checkTime(deadlineNanos);
+        nodes = 0;
+        ttHits = 0;
         pathHistory.clear();
-        pathHistory.record(board);
+        pathHistory.record(board.getZobristKey());
 
         int searchDepth = Math.max(1, depth);
-        List<Move> legalMoves = moveGenerator.generateLegalMoves(board);
+        int movingColor = board.isWhiteToMove ? Piece.WHITE : Piece.BLACK;
+        List<Move> pseudoLegalMoves = moveGenerator.generatePseudoLegalMoves(board);
 
-        if (legalMoves.isEmpty()) {
-            return new SearchResult(null, -MATE_SCORE, searchDepth);
+        if (pseudoLegalMoves.isEmpty()) {
+            return new SearchResult(null, -MATE_SCORE, searchDepth, nodes, ttHits);
         }
 
         // Try to get PV move from TT for root move ordering
@@ -76,16 +80,19 @@ public class Searcher {
             ttMove = entry.bestMove();
         }
 
-        orderMoves(board, legalMoves, pvMoveHint, ttMove);
+        orderMoves(board, pseudoLegalMoves, pvMoveHint, ttMove);
         Move bestMove = null;
         int bestScore = -INFINITY;
         int alpha = -INFINITY;
 
-        for (Move move : legalMoves) {
+        for (Move move : pseudoLegalMoves) {
             MoveState state = board.makeMove(move);
             int score;
 
             try {
+                if (moveGenerator.isInCheck(board, movingColor)) {
+                    continue;
+                }
                 score = -negamax(board, searchDepth - 1, 1, -INFINITY, -alpha, deadlineNanos);
             } finally {
                 board.unmakeMove(state);
@@ -99,24 +106,30 @@ public class Searcher {
             alpha = Math.max(alpha, bestScore);
         }
 
+        if (bestMove == null) {
+            return new SearchResult(null, -MATE_SCORE, searchDepth, nodes, ttHits);
+        }
+
         // Store root result in TT
         tt.store(board.getZobristKey(), bestScore, searchDepth, TranspositionTable.EXACT, bestMove);
 
-        return new SearchResult(bestMove, bestScore, searchDepth);
+        return new SearchResult(bestMove, bestScore, searchDepth, nodes, ttHits);
     }
 
     private int negamax(Board board, int depth, int ply, int alpha, int beta, long deadlineNanos) {
         checkTime(deadlineNanos);
+        nodes++;
 
-        if (pathHistory.getCount(board) >= 2) {
+        long key = board.getZobristKey();
+        if (pathHistory.getCount(key) >= 2) {
             return 0;
         }
 
-        long key = board.getZobristKey();
         TranspositionTable.Entry entry = tt.probe(key);
         Move ttMove = null;
 
         if (entry != null && entry.depth() >= depth) {
+            ttHits++;
             int ttScore = entry.score();
             // Adjust mate scores for distance from root
             if (ttScore > MATE_SCORE - 1000) ttScore -= ply;
@@ -142,26 +155,29 @@ public class Searcher {
             return evaluator.evaluate(board);
         }
 
-        List<Move> legalMoves = moveGenerator.generateLegalMoves(board);
-
-        if (legalMoves.isEmpty()) {
+        int movingColor = board.isWhiteToMove ? Piece.WHITE : Piece.BLACK;
+        List<Move> pseudoLegalMoves = moveGenerator.generatePseudoLegalMoves(board);
+        if (pseudoLegalMoves.isEmpty()) {
             return -MATE_SCORE + ply;
         }
 
-        orderMoves(board, legalMoves, null, ttMove);
+        orderMoves(board, pseudoLegalMoves, null, ttMove);
         int bestScore = -INFINITY;
         Move bestMove = null;
         int originalAlpha = alpha;
 
-        for (Move move : legalMoves) {
+        for (Move move : pseudoLegalMoves) {
             MoveState state = board.makeMove(move);
-            pathHistory.record(board);
+            pathHistory.record(board.getZobristKey());
             int score;
 
             try {
+                if (moveGenerator.isInCheck(board, movingColor)) {
+                    continue;
+                }
                 score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, deadlineNanos);
             } finally {
-                pathHistory.unrecord(board);
+                pathHistory.unrecord(board.getZobristKey());
                 board.unmakeMove(state);
             }
 
@@ -175,6 +191,10 @@ public class Searcher {
             if (alpha >= beta) {
                 break;
             }
+        }
+
+        if (bestMove == null) {
+            return -MATE_SCORE + ply;
         }
 
         int flag = TranspositionTable.EXACT;
@@ -193,57 +213,52 @@ public class Searcher {
     }
 
     private void orderMoves(Board board, List<Move> moves, Move pvMove, Move ttMove) {
-        int[] scores = new int[moves.size()];
         int opponentPawnColor = board.isWhiteToMove ? Piece.BLACK : Piece.WHITE;
-
-        for (int i = 0; i < moves.size(); i++) {
-            Move move = moves.get(i);
-            int score = 0;
-
-            if (move.equals(pvMove)) {
-                score = 2_000_000;
-            } else if (move.equals(ttMove)) {
-                score = 1_000_000;
-            } else {
-                int movedPiece = board.getSquare(move.from());
-                int capturedPiece = board.getSquare(move.to());
-
-                // Promotions
-                if (move.isPromotion()) {
-                    score += 10000 + Evaluator.PIECE_VALUES[move.promotionType()];
-                }
-
-                // Captures via MVV-LVA
-                if (capturedPiece != Piece.EMPTY && Piece.getType(capturedPiece) != Piece.VOID) {
-                    score += 1000 + (Evaluator.PIECE_VALUES[Piece.getType(capturedPiece)] * 10) - Evaluator.PIECE_VALUES[Piece.getType(movedPiece)];
-                }
-
-                // Penalize any move whose destination square is attacked by an opponent pawn
-                if (isSquareAttackedByPawn(board, move.to(), opponentPawnColor)) {
-                    score -= 50;
-                }
-            }
-
-            scores[i] = score;
-        }
 
         for (int i = 0; i < moves.size() - 1; i++) {
             int bestIndex = i;
+            int bestScore = scoreMove(board, moves.get(i), pvMove, ttMove, opponentPawnColor);
             for (int j = i + 1; j < moves.size(); j++) {
-                if (scores[j] > scores[bestIndex]) {
+                int score = scoreMove(board, moves.get(j), pvMove, ttMove, opponentPawnColor);
+                if (score > bestScore) {
                     bestIndex = j;
+                    bestScore = score;
                 }
             }
             if (bestIndex != i) {
                 Move tempMove = moves.get(i);
                 moves.set(i, moves.get(bestIndex));
                 moves.set(bestIndex, tempMove);
-
-                int tempScore = scores[i];
-                scores[i] = scores[bestIndex];
-                scores[bestIndex] = tempScore;
             }
         }
+    }
+
+    private int scoreMove(Board board, Move move, Move pvMove, Move ttMove, int opponentPawnColor) {
+        if (move.equals(pvMove)) {
+            return 2_000_000;
+        }
+        if (move.equals(ttMove)) {
+            return 1_000_000;
+        }
+
+        int score = 0;
+        int movedPiece = board.getSquare(move.from());
+        int capturedPiece = board.getSquare(move.to());
+
+        if (move.isPromotion()) {
+            score += 10000 + Evaluator.PIECE_VALUES[move.promotionType()];
+        }
+
+        if (capturedPiece != Piece.EMPTY && Piece.getType(capturedPiece) != Piece.VOID) {
+            score += 1000 + (Evaluator.PIECE_VALUES[Piece.getType(capturedPiece)] * 10)
+                    - Evaluator.PIECE_VALUES[Piece.getType(movedPiece)];
+        }
+
+        if (isSquareAttackedByPawn(board, move.to(), opponentPawnColor)) {
+            score -= 50;
+        }
+
+        return score;
     }
 
     private boolean isSquareAttackedByPawn(Board board, int square, int pawnColor) {
@@ -258,7 +273,7 @@ public class Searcher {
         return false;
     }
 
-    public record SearchResult(Move bestMove, int score, int depth) {
+    public record SearchResult(Move bestMove, int score, int depth, long nodes, long ttHits) {
     }
 
     private static class SearchStoppedException extends RuntimeException {
