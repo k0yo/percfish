@@ -6,14 +6,16 @@ import com.percfish.engine.GameResult;
 import com.percfish.engine.Move;
 import com.percfish.engine.MoveGenerator;
 import com.percfish.engine.PositionHistory;
+import com.percfish.engine.Searcher;
 import java.util.List;
-import java.util.Random;
 import java.util.Scanner;
 
 public class Main {
+    private static final int DEFAULT_SEARCH_DEPTH = 100;
+
     private static final Board board = new Board();
     private static final PositionHistory positionHistory = new PositionHistory();
-    private static final Random random = new Random();
+    private static final Searcher searcher = new Searcher();
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
@@ -30,7 +32,7 @@ public class Main {
 
         switch (commandType) {
             case "uci" -> {
-                System.out.println("id name Percfish 0.0.0");
+                System.out.println("id name Percfish 0.1.0");
                 System.out.println("id author Sembii");
                 System.out.println("uciok");
             }
@@ -48,6 +50,7 @@ public class Main {
                 System.out.println("Game result: " + gameResult);
             }
             case "go" -> handleGo(parts);
+            case "stop" -> searcher.stop();
             case "genmoves" -> {
                 System.out.println("Generating moves...");
                 MoveGenerator moveGenerator = new MoveGenerator();
@@ -64,11 +67,59 @@ public class Main {
 
     private static void handleGo(String[] args) {
         if (args.length >= 2 && args[1].equals("perft")) {
-            handlePerft(args);
+            if (args.length >= 3 && args[2].equals("divide")) {
+                handlePerftDivide(args);
+            } else {
+                handlePerft(args);
+            }
             return;
         }
 
-        playRandomMove();
+        int depth = DEFAULT_SEARCH_DEPTH;
+        long movetimeMs = -1;
+        long wtime = -1;
+        long btime = -1;
+        long winc = 0;
+        long binc = 0;
+
+        for (int i = 1; i < args.length; i++) {
+            switch (args[i]) {
+                case "depth" -> {
+                    if (i + 1 < args.length) depth = Integer.parseInt(args[++i]);
+                }
+                case "movetime" -> {
+                    if (i + 1 < args.length) movetimeMs = Long.parseLong(args[++i]);
+                }
+                case "wtime" -> {
+                    if (i + 1 < args.length) wtime = Long.parseLong(args[++i]);
+                }
+                case "btime" -> {
+                    if (i + 1 < args.length) btime = Long.parseLong(args[++i]);
+                }
+                case "winc" -> {
+                    if (i + 1 < args.length) winc = Long.parseLong(args[++i]);
+                }
+                case "binc" -> {
+                    if (i + 1 < args.length) binc = Long.parseLong(args[++i]);
+                }
+            }
+        }
+
+        if (movetimeMs == -1) {
+            long time = board.isWhiteToMove ? wtime : btime;
+            long inc = board.isWhiteToMove ? winc : binc;
+
+            if (time != -1) {
+                movetimeMs = time / 20 + inc / 2;
+                movetimeMs = Math.min(movetimeMs, time / 2); // Cap at half remaining time
+            }
+        }
+
+        if (movetimeMs != -1) {
+            handleSearchIterative(depth, movetimeMs);
+        } else {
+            handleSearchIterative(depth, Long.MAX_VALUE);
+        }
     }
 
     private static void handlePerft(String[] args) {
@@ -88,17 +139,23 @@ public class Main {
         }
     }
 
-    private static void playRandomMove() {
-        MoveGenerator moveGenerator = new MoveGenerator();
-        List<Move> legalMoves = moveGenerator.generateLegalMoves(board);
-
-        if (legalMoves.isEmpty()) {
-            System.out.println("bestmove 0000");
+    private static void handlePerftDivide(String[] args) {
+        if (args.length != 4) {
             return;
         }
 
-        Move bestMove = legalMoves.get(random.nextInt(legalMoves.size()));
-        System.out.println("bestmove " + bestMove);
+        int depth = Integer.parseInt(args[3]);
+        MoveGenerator moveGenerator = new MoveGenerator();
+        moveGenerator.perftDivide(board, depth);
+    }
+
+    private static void handleSearchIterative(int depth, long movetimeMs) {
+        Searcher.SearchResult result = searcher.searchIterative(board, depth, movetimeMs, Main::printSearchInfo);
+        System.out.println("bestmove " + (result.bestMove() == null ? "0000" : result.bestMove()));
+    }
+
+    private static void printSearchInfo(Searcher.SearchResult result) {
+        System.out.println("info depth " + result.depth() + " score cp " + result.score());
     }
 
     private static void handlePosition(String[] args) {

@@ -107,6 +107,27 @@ public class MoveGenerator {
         return nodes;
     }
 
+    public void perftDivide(Board board, int depth) {
+        if (depth <= 0) {
+            System.out.println("Total nodes: 1");
+            return;
+        }
+
+        long totalNodes = 0;
+        List<Move> moves = generateLegalMoves(board);
+
+        for (Move move : moves) {
+            MoveState state = board.makeMove(move);
+            long nodes = perft(board, depth - 1);
+            board.unmakeMove(state);
+            System.out.println(move + ": " + nodes);
+            totalNodes += nodes;
+        }
+
+        System.out.println("\nTotal moves: " + moves.size());
+        System.out.println("Total nodes: " + totalNodes);
+    }
+
     public boolean isSquareAttacked(Board board, int square, int byColor) {
         for (int i = 0; i < 81; i++) {
             int piece = board.getSquare(i);

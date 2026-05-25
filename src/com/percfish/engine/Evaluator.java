@@ -3,7 +3,8 @@ package com.percfish.engine;
 public class Evaluator {
     private static final int TEMPO_BONUS = 10;
     private static final int MOBILITY_BONUS_PER_MOVE = 2;
-    private static final int[] PIECE_VALUES = new int[16];
+    public static final int[] PIECE_VALUES = new int[16];
+    public static final int KING_VALUE = 10000;
 
     static {
         PIECE_VALUES[Piece.PAWN] = 100;

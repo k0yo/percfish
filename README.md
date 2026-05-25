@@ -3,7 +3,7 @@
 An UCI-compatible chess engine for the **Perc** variant, written in Java.
 
 ## Development Status
-Current Version: **0.0.1** _(Legal move generation, perft, repetition tracking, eval, random bot)_
+Current Version: **0.1.0** _(Legal move generation, perft, repetition tracking, eval, basic search)_
 
 Rough ladder:
 * **v0.1.0** - First working search `go` (even 1-ply), returns `bestmove`.
@@ -33,7 +33,9 @@ java -cp out/production/percfish com.percfish.Main
 * `d` - Displays the current board state in ASCII format.
 * `eval` - Prints the current material evaluation from White's perspective.
 * `genmoves` - Prints all legal moves for the current board state.
-* `go` - Plays a random legal move.
+* `go` - Searches to the default depth and prints the best move.
+* `go depth <depth>` - Searches to the given depth and prints the best move.
+* `go movetime <ms>` - Searches until the given number of milliseconds has elapsed.
 * `go perft <depth>` - Counts legal move-tree nodes to the given depth.
 * `result` - Prints the current game result (`ONGOING`, `WHITE_WINS`, `BLACK_WINS`, or `DRAW`).
 * `quit` - Exits the engine.
