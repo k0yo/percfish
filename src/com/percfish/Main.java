@@ -17,11 +17,15 @@ public class Main {
     private static final PositionHistory positionHistory = new PositionHistory();
     private static final Searcher searcher = new Searcher();
 
+    private static Thread searchThread = null;
+    private static final Object searchLock = new Object();
+
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
 
         while (scanner.hasNextLine()) {
             String command = scanner.nextLine().trim();
+            if (command.isEmpty()) continue;
             handleCommand(command);
         }
     }
@@ -32,13 +36,16 @@ public class Main {
 
         switch (commandType) {
             case "uci" -> {
-                System.out.println("id name Percfish 0.1.0");
+                System.out.println("id name Percfish 0.3.0");
                 System.out.println("id author Sembii");
                 System.out.println("uciok");
             }
             case "isready" -> System.out.println("readyok");
             case "d" -> System.out.println(board.getAsciiBoard());
-            case "position" -> handlePosition(parts);
+            case "position" -> {
+                stopSearch();
+                handlePosition(parts);
+            }
             case "eval" -> {
                 Evaluator evaluator = new Evaluator();
                 double eval = evaluator.evaluateWhitePerspective(board) / 100.0;
@@ -49,9 +56,13 @@ public class Main {
                 GameResult gameResult = moveGenerator.getGameResult(board, positionHistory);
                 System.out.println("Game result: " + gameResult);
             }
-            case "go" -> handleGo(parts);
-            case "stop" -> searcher.stop();
+            case "go" -> {
+                stopSearch();
+                handleGo(parts);
+            }
+            case "stop" -> stopSearch();
             case "genmoves" -> {
+                stopSearch();
                 System.out.println("Generating moves...");
                 MoveGenerator moveGenerator = new MoveGenerator();
                 List<Move> moves = moveGenerator.generateLegalMoves(board);
@@ -60,9 +71,26 @@ public class Main {
                 }
                 System.out.println("Total moves: " + moves.size());
             }
-            case "quit" -> System.exit(0);
+            case "quit" -> {
+                stopSearch();
+                System.exit(0);
+            }
         }
 
+    }
+
+    private static void stopSearch() {
+        synchronized (searchLock) {
+            searcher.stop();
+            if (searchThread != null) {
+                try {
+                    searchThread.join();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                searchThread = null;
+            }
+        }
     }
 
     private static void handleGo(String[] args) {
@@ -150,8 +178,13 @@ public class Main {
     }
 
     private static void handleSearchIterative(int depth, long movetimeMs) {
-        Searcher.SearchResult result = searcher.searchIterative(board, depth, movetimeMs, Main::printSearchInfo);
-        System.out.println("bestmove " + (result.bestMove() == null ? "0000" : result.bestMove()));
+        synchronized (searchLock) {
+            searchThread = new Thread(() -> {
+                Searcher.SearchResult result = searcher.searchIterative(board, depth, movetimeMs, Main::printSearchInfo);
+                System.out.println("bestmove " + (result.bestMove() == null ? "0000" : result.bestMove()));
+            });
+            searchThread.start();
+        }
     }
 
     private static void printSearchInfo(Searcher.SearchResult result) {

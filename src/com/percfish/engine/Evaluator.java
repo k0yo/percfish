@@ -21,6 +21,7 @@ public class Evaluator {
 
     public int evaluate(Board board) {
         int score = evaluateWhitePerspective(board);
+        score += evaluateMobilityWhitePerspective(board);
         score += board.isWhiteToMove ? TEMPO_BONUS : -TEMPO_BONUS;
         return board.isWhiteToMove ? score : -score;
     }
@@ -45,7 +46,7 @@ public class Evaluator {
             }
         }
 
-        return score + evaluateMobilityWhitePerspective(board);
+        return score;
     }
 
     private int evaluateMobilityWhitePerspective(Board board) {
@@ -53,10 +54,10 @@ public class Evaluator {
         boolean oldWhiteToMove = board.isWhiteToMove;
 
         board.isWhiteToMove = true;
-        int whiteMobility = moveGenerator.generateLegalMoves(board).size();
+        int whiteMobility = moveGenerator.generatePseudoLegalMoves(board).size();
 
         board.isWhiteToMove = false;
-        int blackMobility = moveGenerator.generateLegalMoves(board).size();
+        int blackMobility = moveGenerator.generatePseudoLegalMoves(board).size();
 
         board.isWhiteToMove = oldWhiteToMove;
 
