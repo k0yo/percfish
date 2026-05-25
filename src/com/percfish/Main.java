@@ -1,12 +1,9 @@
 package com.percfish;
 
-import com.percfish.engine.Board;
-import com.percfish.engine.Evaluator;
-import com.percfish.engine.GameResult;
-import com.percfish.engine.Move;
-import com.percfish.engine.MoveGenerator;
-import com.percfish.engine.PositionHistory;
-import com.percfish.engine.Searcher;
+import com.percfish.engine.evaluation.Evaluator;
+import com.percfish.engine.search.SearchResult;
+import com.percfish.engine.search.Searcher;
+import com.percfish.engine.state.*;
 import java.util.List;
 import java.util.Scanner;
 
@@ -182,14 +179,14 @@ public class Main {
         synchronized (searchLock) {
             searchThread = new Thread(() -> {
                 searchStartNanos = System.nanoTime();
-                Searcher.SearchResult result = searcher.searchIterative(board, depth, movetimeMs, Main::printSearchInfo);
+                SearchResult result = searcher.searchIterative(board, depth, movetimeMs, Main::printSearchInfo);
                 System.out.println("bestmove " + (result.bestMove() == null ? "0000" : result.bestMove()));
             });
             searchThread.start();
         }
     }
 
-    private static void printSearchInfo(Searcher.SearchResult result) {
+    private static void printSearchInfo(SearchResult result) {
         long elapsedMs = Math.max(1L, (System.nanoTime() - searchStartNanos) / 1_000_000L);
         long nps = (result.nodes() * 1000L) / elapsedMs;
         System.out.println("info depth " + result.depth() + " score cp " + result.score() +
