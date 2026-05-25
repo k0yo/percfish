@@ -2,6 +2,7 @@ package com.percfish.engine;
 
 public class Evaluator {
     private static final int TEMPO_BONUS = 10;
+    private static final int MOBILITY_BONUS_PER_MOVE = 2;
     private static final int[] PIECE_VALUES = new int[16];
 
     static {
@@ -43,6 +44,21 @@ public class Evaluator {
             }
         }
 
-        return score;
+        return score + evaluateMobilityWhitePerspective(board);
+    }
+
+    private int evaluateMobilityWhitePerspective(Board board) {
+        MoveGenerator moveGenerator = new MoveGenerator();
+        boolean oldWhiteToMove = board.isWhiteToMove;
+
+        board.isWhiteToMove = true;
+        int whiteMobility = moveGenerator.generateLegalMoves(board).size();
+
+        board.isWhiteToMove = false;
+        int blackMobility = moveGenerator.generateLegalMoves(board).size();
+
+        board.isWhiteToMove = oldWhiteToMove;
+
+        return (whiteMobility - blackMobility) * MOBILITY_BONUS_PER_MOVE;
     }
 }

@@ -7,11 +7,13 @@ import com.percfish.engine.Move;
 import com.percfish.engine.MoveGenerator;
 import com.percfish.engine.PositionHistory;
 import java.util.List;
+import java.util.Random;
 import java.util.Scanner;
 
 public class Main {
     private static final Board board = new Board();
     private static final PositionHistory positionHistory = new PositionHistory();
+    private static final Random random = new Random();
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
@@ -61,7 +63,16 @@ public class Main {
     }
 
     private static void handleGo(String[] args) {
-        if (args.length != 3 || !args[1].equals("perft")) {
+        if (args.length >= 2 && args[1].equals("perft")) {
+            handlePerft(args);
+            return;
+        }
+
+        playRandomMove();
+    }
+
+    private static void handlePerft(String[] args) {
+        if (args.length != 3) {
             return;
         }
 
@@ -75,6 +86,19 @@ public class Main {
 
             System.out.println("perft(" + currentDepth + ") = " + nodes + " (" + elapsedMs + " ms)");
         }
+    }
+
+    private static void playRandomMove() {
+        MoveGenerator moveGenerator = new MoveGenerator();
+        List<Move> legalMoves = moveGenerator.generateLegalMoves(board);
+
+        if (legalMoves.isEmpty()) {
+            System.out.println("bestmove 0000");
+            return;
+        }
+
+        Move bestMove = legalMoves.get(random.nextInt(legalMoves.size()));
+        System.out.println("bestmove " + bestMove);
     }
 
     private static void handlePosition(String[] args) {

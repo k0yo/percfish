@@ -26,6 +26,7 @@ java -cp out/production/percfish com.percfish.Main
 * `d` - Displays the current board state in ASCII format.
 * `eval` - Prints the current material evaluation from White's perspective.
 * `genmoves` - Prints all legal moves for the current board state.
+* `go` - Plays a random legal move.
 * `go perft <depth>` - Counts legal move-tree nodes to the given depth.
 * `result` - Prints the current game result (`ONGOING`, `WHITE_WINS`, `BLACK_WINS`, or `DRAW`).
 * `quit` - Exits the engine.
