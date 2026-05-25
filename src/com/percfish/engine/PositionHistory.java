@@ -4,19 +4,19 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class PositionHistory {
-    private final Map<String, Integer> repetitionCounts = new HashMap<>();
+    private final Map<Long, Integer> repetitionCounts = new HashMap<>();
 
     public void clear() {
         repetitionCounts.clear();
     }
 
     public void record(Board board) {
-        String key = board.repetitionKey();
+        long key = board.repetitionKey();
         repetitionCounts.put(key, getCount(board) + 1);
     }
 
     public void unrecord(Board board) {
-        String key = board.repetitionKey();
+        long key = board.repetitionKey();
         int count = getCount(board);
 
         if (count <= 1) {

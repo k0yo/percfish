@@ -6,11 +6,13 @@ public class Board {
     private final int[] squares;
     public boolean isWhiteToMove;
     private int echoPower;
+    private long zobristKey;
 
     public Board() {
         this.squares = new int[81];
         this.isWhiteToMove = true;
         this.echoPower = Piece.EMPTY;
+        this.zobristKey = Zobrist.calculateKey(this);
     }
 
     public int getSquare(int index) {
@@ -19,6 +21,10 @@ public class Board {
 
     public int getEchoPower() {
         return echoPower;
+    }
+
+    public long getZobristKey() {
+        return zobristKey;
     }
 
     public int findKing(int color) {
@@ -143,6 +149,8 @@ public class Board {
         } else {
             this.echoPower = Piece.EMPTY;
         }
+
+        this.zobristKey = Zobrist.calculateKey(this);
     }
 
     public String toPfen() {
@@ -176,8 +184,8 @@ public class Board {
         return pfen + " " + turn + " " + echo;
     }
 
-    public String repetitionKey() {
-        return toPfen();
+    public long repetitionKey() {
+        return zobristKey;
     }
 
     public MoveState makeMove(String move) {
@@ -195,8 +203,19 @@ public class Board {
 
         int newEchoPower = movedType == Piece.ECHO ? echoPower : movedType;
         int finalType = move.isPromotion() ? move.promotionType() : movedType;
+        int finalPiece = movedColor | finalType;
 
-        squares[move.to()] = movedColor | finalType;
+        // Update Zobrist Key
+        zobristKey ^= Zobrist.getPieceKey(move.from(), movedPiece);
+        if (capturedPiece != Piece.EMPTY) {
+            zobristKey ^= Zobrist.getPieceKey(move.to(), capturedPiece);
+        }
+        zobristKey ^= Zobrist.getPieceKey(move.to(), finalPiece);
+        zobristKey ^= Zobrist.getSideKey();
+        zobristKey ^= Zobrist.getEchoPowerKey(oldEchoPower);
+        zobristKey ^= Zobrist.getEchoPowerKey(newEchoPower);
+
+        squares[move.to()] = finalPiece;
         squares[move.from()] = Piece.EMPTY;
         echoPower = newEchoPower;
         isWhiteToMove = !isWhiteToMove;
@@ -207,9 +226,30 @@ public class Board {
     public void unmakeMove(MoveState state) {
         Move move = state.move();
 
-        squares[move.from()] = state.movedPiece();
-        squares[move.to()] = state.capturedPiece();
-        echoPower = state.oldEchoPower();
-        isWhiteToMove = state.oldWhiteToMove();
+        int movedPiece = state.movedPiece();
+        int capturedPiece = state.capturedPiece();
+        int oldEchoPower = state.oldEchoPower();
+        boolean oldWhiteToMove = state.oldWhiteToMove();
+
+        int movedColor = Piece.getColor(movedPiece);
+        int movedType = Piece.getType(movedPiece);
+        int newEchoPower = movedType == Piece.ECHO ? oldEchoPower : movedType;
+        int finalType = move.isPromotion() ? move.promotionType() : movedType;
+        int finalPiece = movedColor | finalType;
+
+        // Revert Zobrist Key
+        zobristKey ^= Zobrist.getPieceKey(move.from(), movedPiece);
+        if (capturedPiece != Piece.EMPTY) {
+            zobristKey ^= Zobrist.getPieceKey(move.to(), capturedPiece);
+        }
+        zobristKey ^= Zobrist.getPieceKey(move.to(), finalPiece);
+        zobristKey ^= Zobrist.getSideKey();
+        zobristKey ^= Zobrist.getEchoPowerKey(oldEchoPower);
+        zobristKey ^= Zobrist.getEchoPowerKey(newEchoPower);
+
+        squares[move.from()] = movedPiece;
+        squares[move.to()] = capturedPiece;
+        echoPower = oldEchoPower;
+        isWhiteToMove = oldWhiteToMove;
     }
 }

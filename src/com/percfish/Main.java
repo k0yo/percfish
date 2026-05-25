@@ -36,7 +36,7 @@ public class Main {
 
         switch (commandType) {
             case "uci" -> {
-                System.out.println("id name Percfish 0.3.0");
+                System.out.println("id name Percfish 0.3.1");
                 System.out.println("id author Sembii");
                 System.out.println("uciok");
             }
