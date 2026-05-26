@@ -9,6 +9,8 @@ public class Searcher {
     private static final int MATE_SCORE = 1_000_000;
     private static final int INFINITY = MATE_SCORE + 1_000;
     private static final long NO_DEADLINE = Long.MAX_VALUE;
+    private static final int MAX_QUIESCENCE_DEPTH = 4;
+    private static final int DELTA_PRUNING_MARGIN = 200;
 
     private final Evaluator evaluator = new Evaluator();
     private final MoveGenerator moveGenerator = new MoveGenerator();
@@ -88,6 +90,10 @@ public class Searcher {
         int alpha = -INFINITY;
 
         for (Move move : pseudoLegalMoves) {
+            if (isKingCapture(board, move)) {
+                continue;
+            }
+
             MoveState state = board.makeMove(move);
             int score;
 
@@ -153,7 +159,7 @@ public class Searcher {
         }
 
         if (depth == 0) {
-            return evaluator.evaluate(board);
+            return quiescence(board, ply, 0, alpha, beta, deadlineNanos);
         }
 
         int movingColor = board.isWhiteToMove ? Piece.WHITE : Piece.BLACK;
@@ -168,6 +174,10 @@ public class Searcher {
         int originalAlpha = alpha;
 
         for (Move move : pseudoLegalMoves) {
+            if (isKingCapture(board, move)) {
+                continue;
+            }
+
             MoveState state = board.makeMove(move);
             pathHistory.record(board.getZobristKey());
             int score;
@@ -203,6 +213,85 @@ public class Searcher {
         else if (bestScore >= beta) flag = TranspositionTable.LOWER_BOUND;
 
         tt.store(key, bestScore, depth, flag, bestMove);
+
+        return bestScore;
+    }
+
+    private int quiescence(Board board, int ply, int qDepth, int alpha, int beta, long deadlineNanos) {
+        checkTime(deadlineNanos);
+        nodes++;
+
+        long key = board.getZobristKey();
+        if (pathHistory.getCount(key) >= 2) {
+            return 0;
+        }
+
+        int movingColor = board.isWhiteToMove ? Piece.WHITE : Piece.BLACK;
+        boolean inCheck = moveGenerator.isInCheck(board, movingColor);
+        int bestScore = -INFINITY;
+        int standPat = -INFINITY;
+
+        if (!inCheck) {
+            standPat = evaluator.evaluate(board);
+            if (standPat >= beta) {
+                return standPat;
+            }
+
+            alpha = Math.max(alpha, standPat);
+            bestScore = standPat;
+        }
+
+        if (qDepth >= MAX_QUIESCENCE_DEPTH) {
+            return inCheck ? evaluator.evaluate(board) : bestScore;
+        }
+
+        List<Move> pseudoLegalMoves = moveGenerator.generatePseudoLegalMoves(board);
+        orderMoves(board, pseudoLegalMoves, null, null);
+        boolean foundLegalMove = false;
+
+        for (Move move : pseudoLegalMoves) {
+            if (isKingCapture(board, move)) {
+                continue;
+            }
+
+            boolean isCapture = isCapture(board, move);
+            if (!inCheck && isCapture && standPat + captureGain(board, move) + DELTA_PRUNING_MARGIN < alpha) {
+                continue;
+            }
+
+            MoveState state = board.makeMove(move);
+            pathHistory.record(board.getZobristKey());
+            int score;
+
+            try {
+                if (moveGenerator.isInCheck(board, movingColor)) {
+                    continue;
+                }
+
+                foundLegalMove = true;
+                if (!inCheck && !isCapture) {
+                    continue;
+                }
+
+                score = -quiescence(board, ply + 1, qDepth + 1, -beta, -alpha, deadlineNanos);
+            } finally {
+                pathHistory.unrecord(board.getZobristKey());
+                board.unmakeMove(state);
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+            }
+
+            alpha = Math.max(alpha, score);
+            if (alpha >= beta) {
+                break;
+            }
+        }
+
+        if (inCheck && !foundLegalMove) {
+            return -MATE_SCORE + ply;
+        }
 
         return bestScore;
     }
@@ -270,5 +359,22 @@ public class Searcher {
             return Piece.getType(piece) == Piece.PAWN && Piece.getColor(piece) == pawnColor;
         }
         return false;
+    }
+
+    private boolean isCapture(Board board, Move move) {
+        int capturedPiece = board.getSquare(move.to());
+        return capturedPiece != Piece.EMPTY && Piece.getType(capturedPiece) != Piece.VOID;
+    }
+
+    private boolean isKingCapture(Board board, Move move) {
+        return Piece.getType(board.getSquare(move.to())) == Piece.KING;
+    }
+
+    private int captureGain(Board board, Move move) {
+        int capturedType = Piece.getType(board.getSquare(move.to()));
+        if (capturedType <= Piece.EMPTY || capturedType == Piece.VOID) {
+            return 0;
+        }
+        return Evaluator.PIECE_VALUES[capturedType];
     }
 }
