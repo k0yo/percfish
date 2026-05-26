@@ -17,7 +17,10 @@ Rough ladder:
 Build:
 ```bash
 mkdir -p out/production/percfish
-javac -d out/production/percfish src/com/percfish/Main.java src/com/percfish/engine/*.java
+javac -d out/production/percfish src/com/percfish/Main.java \
+    src/com/percfish/engine/state/*.java \
+    src/com/percfish/engine/search/*.java \
+    src/com/percfish/engine/evaluation/*.java
 ```
 
 Run:
