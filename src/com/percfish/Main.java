@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Scanner;
 
 public class Main {
+    private static final String VERSION = "0.3.1";
     private static final int DEFAULT_SEARCH_DEPTH = 100;
 
     private static final Board board = new Board();
@@ -19,6 +20,7 @@ public class Main {
     private static volatile long searchStartNanos;
 
     public static void main(String[] args) {
+        System.out.println("Percfish " + VERSION + " by sembii");
         Scanner scanner = new Scanner(System.in);
 
         while (scanner.hasNextLine()) {
@@ -34,8 +36,8 @@ public class Main {
 
         switch (commandType) {
             case "uci" -> {
-                System.out.println("id name Percfish 0.3.1");
-                System.out.println("id author Sembii");
+                System.out.println("id name Percfish " + VERSION);
+                System.out.println("id author sembii");
                 System.out.println("uciok");
             }
             case "isready" -> System.out.println("readyok");
@@ -190,7 +192,7 @@ public class Main {
         long elapsedMs = Math.max(1L, (System.nanoTime() - searchStartNanos) / 1_000_000L);
         long nps = (result.nodes() * 1000L) / elapsedMs;
         System.out.println("info depth " + result.depth() + " score cp " + result.score() +
-                " nodes " + result.nodes() + " nps " + nps + " tthits " + result.ttHits());
+                " nodes " + result.nodes() + " nps " + nps + " tthits " + result.ttHits() + " time " + elapsedMs);
     }
 
     private static void handlePosition(String[] args) {
