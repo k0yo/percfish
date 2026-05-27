@@ -26,11 +26,20 @@ public class Searcher {
     }
 
     public SearchResult search(Board board, int depth) {
+        return search(board, depth, null);
+    }
+
+    public SearchResult search(Board board, int depth, PositionHistory history) {
         stop = false;
-        return search(board, depth, NO_DEADLINE, null);
+        return search(board, depth, NO_DEADLINE, null, history);
     }
 
     public SearchResult searchIterative(Board board, int maxDepth, long movetimeMs, Consumer<SearchResult> onDepthCompleted) {
+        return searchIterative(board, maxDepth, movetimeMs, onDepthCompleted, null);
+    }
+
+    public SearchResult searchIterative(Board board, int maxDepth, long movetimeMs,
+                                        Consumer<SearchResult> onDepthCompleted, PositionHistory history) {
         stop = false;
         tt.clear();
         long deadlineNanos = movetimeMs == NO_DEADLINE ? NO_DEADLINE : System.nanoTime() + Math.max(1L, movetimeMs) * 1_000_000L;
@@ -46,7 +55,7 @@ public class Searcher {
 
         for (int depth = 1; depth <= maxDepth; depth++) {
             try {
-                SearchResult result = search(board, depth, deadlineNanos, pvMove);
+                SearchResult result = search(board, depth, deadlineNanos, pvMove, history);
                 bestCompletedResult = result;
                 pvMove = result.bestMove();
                 onDepthCompleted.accept(result);
@@ -62,12 +71,16 @@ public class Searcher {
         return bestCompletedResult;
     }
 
-    private SearchResult search(Board board, int depth, long deadlineNanos, Move pvMoveHint) {
+    private SearchResult search(Board board, int depth, long deadlineNanos, Move pvMoveHint, PositionHistory history) {
         checkTime(deadlineNanos);
         nodes = 0;
         ttHits = 0;
         pathHistory.clear();
-        pathHistory.record(board.getZobristKey());
+        if (history != null) {
+            pathHistory.copyFrom(history);
+        } else {
+            pathHistory.record(board.getZobristKey());
+        }
 
         int searchDepth = Math.max(1, depth);
         int movingColor = board.isWhiteToMove ? Piece.WHITE : Piece.BLACK;
@@ -95,6 +108,7 @@ public class Searcher {
             }
 
             MoveState state = board.makeMove(move);
+            pathHistory.record(board.getZobristKey());
             int score;
 
             try {
@@ -103,6 +117,7 @@ public class Searcher {
                 }
                 score = -negamax(board, searchDepth - 1, 1, -INFINITY, -alpha, deadlineNanos);
             } finally {
+                pathHistory.unrecord(board.getZobristKey());
                 board.unmakeMove(state);
             }
 
@@ -128,7 +143,7 @@ public class Searcher {
         nodes++;
 
         long key = board.getZobristKey();
-        if (pathHistory.getCount(key) >= 2) {
+        if (pathHistory.getCount(key) >= 3) {
             return 0;
         }
 
@@ -222,7 +237,8 @@ public class Searcher {
         nodes++;
 
         long key = board.getZobristKey();
-        if (pathHistory.getCount(key) >= 2) {
+        // Threefold repetition draw in quiescence as well
+        if (pathHistory.getCount(key) >= 3) {
             return 0;
         }
 

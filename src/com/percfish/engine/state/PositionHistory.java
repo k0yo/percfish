@@ -15,6 +15,12 @@ public class PositionHistory {
         size = 0;
     }
 
+    public void copyFrom(PositionHistory other) {
+        keys = Arrays.copyOf(other.keys, other.keys.length);
+        counts = Arrays.copyOf(other.counts, other.counts.length);
+        size = other.size;
+    }
+
     public void record(Board board) {
         record(board.repetitionKey());
     }

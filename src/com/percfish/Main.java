@@ -181,7 +181,7 @@ public class Main {
         synchronized (searchLock) {
             searchThread = new Thread(() -> {
                 searchStartNanos = System.nanoTime();
-                SearchResult result = searcher.searchIterative(board, depth, movetimeMs, Main::printSearchInfo);
+                SearchResult result = searcher.searchIterative(board, depth, movetimeMs, Main::printSearchInfo, positionHistory);
                 System.out.println("bestmove " + (result.bestMove() == null ? "0000" : result.bestMove()));
             });
             searchThread.start();
