@@ -13,14 +13,14 @@ public class Evaluator {
     static {
         PIECE_VALUES[Piece.PAWN] = 100;
         PIECE_VALUES[Piece.KNIGHT] = 400;
-        PIECE_VALUES[Piece.BISHOP] = 370;
-        PIECE_VALUES[Piece.CANNON] = 480;
+        PIECE_VALUES[Piece.BISHOP] = 400;
+        PIECE_VALUES[Piece.CANNON] = 550;
         PIECE_VALUES[Piece.FALCON] = 450;
         PIECE_VALUES[Piece.HUNTER] = 450;
-        PIECE_VALUES[Piece.ROOK] = 670;
+        PIECE_VALUES[Piece.ROOK] = 750;
         PIECE_VALUES[Piece.D_HORSE] = 700;
-        PIECE_VALUES[Piece.D_KING] = 750;
-        PIECE_VALUES[Piece.ECHO] = 350;
+        PIECE_VALUES[Piece.D_KING] = 780;
+        PIECE_VALUES[Piece.ECHO] = 400;
     }
 
     public int evaluate(Board board) {
