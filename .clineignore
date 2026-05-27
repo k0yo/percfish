@@ -1,7 +1,5 @@
 ### IntelliJ IDEA ###
 out/
-!**/src/main/**/out/
-!**/src/test/**/out/
 .kotlin
 .idea/
 
@@ -14,8 +12,6 @@ out/
 .springBeans
 .sts4-cache
 bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
 
 ### NetBeans ###
 /nbproject/private/
@@ -29,8 +25,3 @@ bin/
 
 ### Mac OS ###
 .DS_Store
-
-### Others ###
-.git/
-*.class
-*.jar

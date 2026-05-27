@@ -109,6 +109,7 @@ public class Board {
         builder.append("Turn: ").append(isWhiteToMove ? "White" : "Black").append("\n");
         builder.append("Echo Power: ").append(pieceToChar(echoPower)).append("\n");
         builder.append("PFEN: ").append(toPfen()).append("\n");
+        builder.append("Key: ").append(String.format("%016X", zobristKey)).append("\n");
 
         return builder.toString();
     }

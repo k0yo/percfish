@@ -11,11 +11,17 @@ public class Searcher {
     private static final long NO_DEADLINE = Long.MAX_VALUE;
     private static final int MAX_QUIESCENCE_DEPTH = 4;
     private static final int DELTA_PRUNING_MARGIN = 200;
+    private static final int MAX_KILLER_PLY = 100;
+    private static final int KILLER_SLOTS = 2;
 
     private final Evaluator evaluator = new Evaluator();
     private final MoveGenerator moveGenerator = new MoveGenerator();
     private final PositionHistory pathHistory = new PositionHistory();
     private final TranspositionTable tt = new TranspositionTable(64); // 64MB default
+
+    // killerMoves[ply][slot] stores quiet move that caused a beta cutoff at this ply level.
+    // Slot 0 = most recent killer, Slot 1 = second most recent.
+    private final Move[][] killerMoves = new Move[MAX_KILLER_PLY][KILLER_SLOTS];
 
     private volatile boolean stop = false;
     private long nodes;
@@ -42,6 +48,7 @@ public class Searcher {
                                         Consumer<SearchResult> onDepthCompleted, PositionHistory history) {
         stop = false;
         tt.clear();
+        clearKillerMoves();
         long deadlineNanos = movetimeMs == NO_DEADLINE ? NO_DEADLINE : System.nanoTime() + Math.max(1L, movetimeMs) * 1_000_000L;
         List<Move> legalMoves = moveGenerator.generateLegalMoves(board);
 
@@ -183,7 +190,7 @@ public class Searcher {
             return -MATE_SCORE + ply;
         }
 
-        orderMoves(board, pseudoLegalMoves, null, ttMove);
+        orderMoves(board, pseudoLegalMoves, null, ttMove, ply);
         int bestScore = -INFINITY;
         Move bestMove = null;
         int originalAlpha = alpha;
@@ -215,6 +222,9 @@ public class Searcher {
             alpha = Math.max(alpha, score);
 
             if (alpha >= beta) {
+                if (!isCapture(board, move) && !move.isPromotion()) {
+                    storeKillerMove(ply, move);
+                }
                 break;
             }
         }
@@ -262,7 +272,7 @@ public class Searcher {
         }
 
         List<Move> pseudoLegalMoves = moveGenerator.generatePseudoLegalMoves(board);
-        orderMoves(board, pseudoLegalMoves, null, null);
+        orderMoves(board, pseudoLegalMoves, null, null, ply);
         boolean foundLegalMove = false;
 
         for (Move move : pseudoLegalMoves) {
@@ -318,14 +328,37 @@ public class Searcher {
         }
     }
 
+    private void storeKillerMove(int ply, Move move) {
+        if (ply >= MAX_KILLER_PLY) return;
+        // Don't store captures or promotions as killers
+        if (move.isPromotion()) return;
+        if (killerMoves[ply][0] != null && killerMoves[ply][0].equals(move)) {
+            return;
+        }
+
+        killerMoves[ply][1] = killerMoves[ply][0];
+        killerMoves[ply][0] = move;
+    }
+
+    private void clearKillerMoves() {
+        for (int ply = 0; ply < MAX_KILLER_PLY; ply++) {
+            killerMoves[ply][0] = null;
+            killerMoves[ply][1] = null;
+        }
+    }
+
     private void orderMoves(Board board, List<Move> moves, Move pvMove, Move ttMove) {
+        orderMoves(board, moves, pvMove, ttMove, 0);
+    }
+
+    private void orderMoves(Board board, List<Move> moves, Move pvMove, Move ttMove, int ply) {
         int opponentPawnColor = board.isWhiteToMove ? Piece.BLACK : Piece.WHITE;
 
         for (int i = 0; i < moves.size() - 1; i++) {
             int bestIndex = i;
-            int bestScore = scoreMove(board, moves.get(i), pvMove, ttMove, opponentPawnColor);
+            int bestScore = scoreMove(board, moves.get(i), pvMove, ttMove, opponentPawnColor, ply);
             for (int j = i + 1; j < moves.size(); j++) {
-                int score = scoreMove(board, moves.get(j), pvMove, ttMove, opponentPawnColor);
+                int score = scoreMove(board, moves.get(j), pvMove, ttMove, opponentPawnColor, ply);
                 if (score > bestScore) {
                     bestIndex = j;
                     bestScore = score;
@@ -339,12 +372,21 @@ public class Searcher {
         }
     }
 
-    private int scoreMove(Board board, Move move, Move pvMove, Move ttMove, int opponentPawnColor) {
+    private int scoreMove(Board board, Move move, Move pvMove, Move ttMove, int opponentPawnColor, int ply) {
         if (move.equals(pvMove)) {
             return 2_000_000;
         }
         if (move.equals(ttMove)) {
             return 1_000_000;
+        }
+
+        if (ply < MAX_KILLER_PLY) {
+            if (move.equals(killerMoves[ply][0])) {
+                return 900_000;
+            }
+            if (move.equals(killerMoves[ply][1])) {
+                return 800_000;
+            }
         }
 
         int score = 0;
