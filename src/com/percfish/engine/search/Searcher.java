@@ -140,7 +140,8 @@ public class Searcher {
         }
 
         // Store root result in TT
-        tt.store(board.getZobristKey(), bestScore, searchDepth, TranspositionTable.EXACT, bestMove);
+        int storeScore = bestScore;
+        tt.store(board.getZobristKey(), storeScore, searchDepth, TranspositionTable.EXACT, bestMove);
 
         return new SearchResult(bestMove, bestScore, searchDepth, nodes, ttHits);
     }
@@ -233,11 +234,16 @@ public class Searcher {
             return -MATE_SCORE + ply;
         }
 
+        // Normalize mate scores to be relative to this node before storing in TT.
+        int storeScore = bestScore;
+        if (storeScore > MATE_SCORE - 1000) storeScore += ply;
+        else if (storeScore < -MATE_SCORE + 1000) storeScore -= ply;
+
         int flag = TranspositionTable.EXACT;
         if (bestScore <= originalAlpha) flag = TranspositionTable.UPPER_BOUND;
         else if (bestScore >= beta) flag = TranspositionTable.LOWER_BOUND;
 
-        tt.store(key, bestScore, depth, flag, bestMove);
+        tt.store(key, storeScore, depth, flag, bestMove);
 
         return bestScore;
     }
