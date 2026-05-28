@@ -38,14 +38,14 @@ public class MoveGenerator {
 
     public List<Move> generatePseudoLegalMoves(Board board) {
         List<Move> moves = new ArrayList<>();
+        int ownColor = board.isWhiteToMove ? Piece.WHITE : Piece.BLACK;
+        int[] pieceSquares = board.getPieceSquares(ownColor);
+        int pieceCount = board.getPieceCount(ownColor);
 
-        for (int i = 0; i < 81; i++) {
-            int piece = board.getSquare(i);
-
-            if (piece != Piece.EMPTY && Piece.getColor(piece) == (board.isWhiteToMove ? Piece.WHITE : Piece.BLACK)) {
-                addMovesForPiece(i, piece, board, moves, true);
-            }
-
+        for (int idx = 0; idx < pieceCount; idx++) {
+            int square = pieceSquares[idx];
+            int piece = board.getSquare(square);
+            addMovesForPiece(square, piece, board, moves, true);
         }
         return moves;
     }
@@ -129,14 +129,14 @@ public class MoveGenerator {
     }
 
     public boolean isSquareAttacked(Board board, int square, int byColor) {
-        for (int i = 0; i < 81; i++) {
-            int piece = board.getSquare(i);
+        int[] pieceSquares = board.getPieceSquares(byColor);
+        int pieceCount = board.getPieceCount(byColor);
 
-            if (piece == Piece.EMPTY || Piece.getColor(piece) != byColor) {
-                continue;
-            }
+        for (int idx = 0; idx < pieceCount; idx++) {
+            int pieceSquare = pieceSquares[idx];
+            int piece = board.getSquare(pieceSquare);
 
-            if (pieceAttacksSquare(i, piece, square, board)) {
+            if (pieceAttacksSquare(pieceSquare, piece, square, board)) {
                 return true;
             }
         }

@@ -3,13 +3,26 @@ package com.percfish.engine.state;
 public class Board {
     public static final String START_PFEN = "r1n1k1n1r/1h1cec1f1/ppp1b1ppp/4b4/3vvv3/4B4/PPP1B1PPP/1F1CEC1H1/R1N1K1N1R w -";
 
+    private static final int MAX_PIECES_PER_SIDE = 18;
+
     private final int[] squares;
     public boolean isWhiteToMove;
     private int echoPower;
     private long zobristKey;
 
+    private final int[] whitePieceSquares;
+    private int whitePieceCount;
+    private final int[] blackPieceSquares;
+    private int blackPieceCount;
+
+    // King square cache: kingSquare[Piece.WHITE] and kingSquare[Piece.BLACK]
+    private final int[] kingSquare;
+
     public Board() {
         this.squares = new int[81];
+        this.whitePieceSquares = new int[MAX_PIECES_PER_SIDE];
+        this.blackPieceSquares = new int[MAX_PIECES_PER_SIDE];
+        this.kingSquare = new int[2];
         this.isWhiteToMove = true;
         this.echoPower = Piece.EMPTY;
         this.zobristKey = Zobrist.calculateKey(this);
@@ -28,15 +41,16 @@ public class Board {
     }
 
     public int findKing(int color) {
-        for (int i = 0; i < 81; i++) {
-            int piece = squares[i];
+        int idx = color == Piece.WHITE ? 0 : 1;
+        return kingSquare[idx];
+    }
 
-            if (Piece.getType(piece) == Piece.KING && Piece.getColor(piece) == color) {
-                return i;
-            }
-        }
+    public int[] getPieceSquares(int color) {
+        return color == Piece.WHITE ? whitePieceSquares : blackPieceSquares;
+    }
 
-        return -1;
+    public int getPieceCount(int color) {
+        return color == Piece.WHITE ? whitePieceCount : blackPieceCount;
     }
 
     private int charToPiece(char c) {
@@ -123,6 +137,10 @@ public class Board {
         String placement = parts[0];
 
         for (int i = 0; i < 81; i++) squares[i] = Piece.EMPTY;
+        whitePieceCount = 0;
+        blackPieceCount = 0;
+        kingSquare[0] = -1;
+        kingSquare[1] = -1;
 
         String[] ranks = placement.split("/");
         int currentRank = 8;
@@ -136,7 +154,9 @@ public class Board {
                     currentFile += Character.getNumericValue(c);
                 } else {
                     int index = currentRank * 9 + currentFile;
-                    squares[index] = charToPiece(c);
+                    int piece = charToPiece(c);
+                    squares[index] = piece;
+                    addPieceToLists(index, piece);
                     currentFile++;
                 }
             }
@@ -216,6 +236,13 @@ public class Board {
         zobristKey ^= Zobrist.getEchoPowerKey(oldEchoPower);
         zobristKey ^= Zobrist.getEchoPowerKey(newEchoPower);
 
+        // Update piece lists
+        removePieceFromLists(move.from(), movedPiece);
+        if (capturedPiece != Piece.EMPTY) {
+            removePieceFromLists(move.to(), capturedPiece);
+        }
+        addPieceToLists(move.to(), finalPiece);
+
         squares[move.to()] = finalPiece;
         squares[move.from()] = Piece.EMPTY;
         echoPower = newEchoPower;
@@ -248,9 +275,52 @@ public class Board {
         zobristKey ^= Zobrist.getEchoPowerKey(oldEchoPower);
         zobristKey ^= Zobrist.getEchoPowerKey(newEchoPower);
 
+        // Revert piece lists
+        removePieceFromLists(move.to(), finalPiece);
+        addPieceToLists(move.from(), movedPiece);
+        if (capturedPiece != Piece.EMPTY) {
+            addPieceToLists(move.to(), capturedPiece);
+        }
+
         squares[move.from()] = movedPiece;
         squares[move.to()] = capturedPiece;
         echoPower = oldEchoPower;
         isWhiteToMove = oldWhiteToMove;
+    }
+
+    private void addPieceToLists(int square, int piece) {
+        int type = Piece.getType(piece);
+        if (type == Piece.VOID) return; // Void squares are not pieces
+        int color = Piece.getColor(piece);
+        if (color == Piece.WHITE) {
+            whitePieceSquares[whitePieceCount++] = square;
+        } else {
+            blackPieceSquares[blackPieceCount++] = square;
+        }
+        if (type == Piece.KING) {
+            int idx = color == Piece.WHITE ? 0 : 1;
+            kingSquare[idx] = square;
+        }
+    }
+
+    private void removePieceFromLists(int square, int piece) {
+        int type = Piece.getType(piece);
+        if (type == Piece.VOID) return; // Void squares are not in piece lists
+        int color = Piece.getColor(piece);
+        int[] list = color == Piece.WHITE ? whitePieceSquares : blackPieceSquares;
+        int count = color == Piece.WHITE ? whitePieceCount : blackPieceCount;
+
+        for (int i = 0; i < count; i++) {
+            if (list[i] == square) {
+                // Swap with last element and decrement count
+                list[i] = list[count - 1];
+                if (color == Piece.WHITE) {
+                    whitePieceCount--;
+                } else {
+                    blackPieceCount--;
+                }
+                return;
+            }
+        }
     }
 }

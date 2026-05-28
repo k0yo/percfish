@@ -354,22 +354,9 @@ public class Searcher {
     private void orderMoves(Board board, List<Move> moves, Move pvMove, Move ttMove, int ply) {
         int opponentPawnColor = board.isWhiteToMove ? Piece.BLACK : Piece.WHITE;
 
-        for (int i = 0; i < moves.size() - 1; i++) {
-            int bestIndex = i;
-            int bestScore = scoreMove(board, moves.get(i), pvMove, ttMove, opponentPawnColor, ply);
-            for (int j = i + 1; j < moves.size(); j++) {
-                int score = scoreMove(board, moves.get(j), pvMove, ttMove, opponentPawnColor, ply);
-                if (score > bestScore) {
-                    bestIndex = j;
-                    bestScore = score;
-                }
-            }
-            if (bestIndex != i) {
-                Move tempMove = moves.get(i);
-                moves.set(i, moves.get(bestIndex));
-                moves.set(bestIndex, tempMove);
-            }
-        }
+        moves.sort((a, b) -> Integer.compare(
+                scoreMove(board, b, pvMove, ttMove, opponentPawnColor, ply),
+                scoreMove(board, a, pvMove, ttMove, opponentPawnColor, ply)));
     }
 
     private int scoreMove(Board board, Move move, Move pvMove, Move ttMove, int opponentPawnColor, int ply) {

@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Scanner;
 
 public class Main {
-    private static final String VERSION = "0.3.1";
+    private static final String VERSION = "0.3.2";
     private static final int DEFAULT_SEARCH_DEPTH = 100;
 
     private static final Board board = new Board();
@@ -49,7 +49,7 @@ public class Main {
             case "eval" -> {
                 Evaluator evaluator = new Evaluator();
                 double eval = evaluator.evaluateWhitePerspective(board) / 100.0;
-                System.out.printf("Evaluation: %.1f%n", eval);
+                System.out.printf("Evaluation: %.2f%n", eval);
             }
             case "result" -> {
                 MoveGenerator moveGenerator = new MoveGenerator();

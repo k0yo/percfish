@@ -3,7 +3,7 @@
 An UCI-compatible chess engine for the **Perc** variant, written in Java.
 
 ## Development Status
-Current Version: **0.3.1** _(Legal move generation, perft, repetition tracking, eval, iterative search, time management, zobrist hashing, transposition tables)_
+Current Version: **0.3.2** _(Legal move generation, perft, repetition tracking, eval, iterative search, time management, zobrist hashing, transposition tables)_
 
 ## Usage
 

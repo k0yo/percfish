@@ -25,35 +25,35 @@ public class Evaluator {
 
     public int evaluate(Board board) {
         int score = evaluateWhitePerspective(board);
-        score += evaluateMobilityWhitePerspective(board);
-        score += board.isWhiteToMove ? TEMPO_BONUS : -TEMPO_BONUS;
         return board.isWhiteToMove ? score : -score;
     }
 
     public int evaluateWhitePerspective(Board board) {
         int score = 0;
 
-        for (int i = 0; i < 81; i++) {
-            int piece = board.getSquare(i);
+        // White pieces
+        int[] whiteSquares = board.getPieceSquares(Piece.WHITE);
+        int whiteCount = board.getPieceCount(Piece.WHITE);
+        for (int i = 0; i < whiteCount; i++) {
+            int piece = board.getSquare(whiteSquares[i]);
             int type = Piece.getType(piece);
-
-            if (piece == Piece.EMPTY || type == Piece.VOID || type == Piece.KING) {
-                continue;
-            }
-
-            int value = PIECE_VALUES[type];
-
-            if (Piece.getColor(piece) == Piece.WHITE) {
-                score += value;
-            } else {
-                score -= value;
+            if (type != Piece.KING) {
+                score += PIECE_VALUES[type];
             }
         }
 
-        return score;
-    }
+        // Black pieces
+        int[] blackSquares = board.getPieceSquares(Piece.BLACK);
+        int blackCount = board.getPieceCount(Piece.BLACK);
+        for (int i = 0; i < blackCount; i++) {
+            int piece = board.getSquare(blackSquares[i]);
+            int type = Piece.getType(piece);
+            if (type != Piece.KING) {
+                score -= PIECE_VALUES[type];
+            }
+        }
 
-    private int evaluateMobilityWhitePerspective(Board board) {
+        // Mobility bonus
         boolean oldWhiteToMove = board.isWhiteToMove;
 
         board.isWhiteToMove = true;
@@ -64,6 +64,11 @@ public class Evaluator {
 
         board.isWhiteToMove = oldWhiteToMove;
 
-        return (whiteMobility - blackMobility) * MOBILITY_BONUS_PER_MOVE;
+        score += (whiteMobility - blackMobility) * MOBILITY_BONUS_PER_MOVE;
+
+        // Tempo bonus
+        score += board.isWhiteToMove ? TEMPO_BONUS : -TEMPO_BONUS;
+
+        return score;
     }
 }
