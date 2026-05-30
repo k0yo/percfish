@@ -13,6 +13,12 @@ public class Main {
 
     private static final Board board = new Board();
     private static final PositionHistory positionHistory = new PositionHistory();
+
+    static {
+        board.loadPfen(Board.START_PFEN);
+        positionHistory.record(board);
+    }
+
     private static final Searcher searcher = new Searcher();
 
     private static Thread searchThread = null;
