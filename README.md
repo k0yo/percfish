@@ -3,7 +3,7 @@
 An UCI-compatible chess engine for the **Perc** variant, written in Java.
 
 ## Development Status
-Current Version: **0.3.4** _(Zobrist hashing, transposition tables, phase blending, null move pruning)_
+Current Version: **0.4.0** _(Quiescence search, killer move ordering, history heuristic, phase blending, null move pruning, late move reductions)_
 
 ## Usage
 

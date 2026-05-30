@@ -17,6 +17,22 @@ public class Searcher {
     private static final int NMP_DEPTH_THRESHOLD = 3;
     private static final int NMP_REDUCTION = 2;
 
+    private static final int LMR_MAX_DEPTH = 64;
+    private static final int LMR_MAX_MOVES = 218;
+    private static final int LMR_MOVE_INDEX_THRESHOLD = 3;
+    private static final int LMR_MIN_DEPTH = 3;
+
+    private final int[][] lmrTable = new int[LMR_MAX_DEPTH][LMR_MAX_MOVES];
+
+    {
+        for (int d = 1; d < LMR_MAX_DEPTH; d++) {
+            for (int m = 1; m < LMR_MAX_MOVES; m++) {
+                double r = Math.log(d) * Math.log(m) / 2.2;
+                lmrTable[d][m] = Math.max(0, Math.min((int) r, d - 1));
+            }
+        }
+    }
+
     private final Evaluator evaluator = new Evaluator();
     private final MoveGenerator moveGenerator = new MoveGenerator();
     private final PositionHistory pathHistory = new PositionHistory();
@@ -188,10 +204,11 @@ public class Searcher {
         }
 
         int movingColor = board.isWhiteToMove ? Piece.WHITE : Piece.BLACK;
+        boolean inCheck = moveGenerator.isInCheck(board, movingColor);
 
         // ── Null-Move Pruning (NMP) ──
         if (depth >= NMP_DEPTH_THRESHOLD
-                && !moveGenerator.isInCheck(board, movingColor)
+                && !inCheck
                 && hasNonPawnMaterial(board, movingColor)) {
 
             MoveState nullState = board.makeNullMove();
@@ -227,9 +244,11 @@ public class Searcher {
 
         int quietCount = 0;
         int sideIdx = board.isWhiteToMove ? 0 : 1;
+        int moveIndex = 0;
 
         for (Move move : pseudoLegalMoves) {
             if (isKingCapture(board, move)) {
+                moveIndex++;
                 continue;
             }
 
@@ -241,14 +260,34 @@ public class Searcher {
 
             try {
                 if (moveGenerator.isInCheck(board, movingColor)) {
+                    moveIndex++;
                     continue;
                 }
+
+                // ── Late Move Reduction (LMR) ──
+                int historyScore = isQuiet ? getHistoryScore(sideIdx, move.from(), move.to()) : 0;
+                int newDepth = depth - 1;
+
+                if (lmrEligible(moveIndex, depth, isQuiet, inCheck, historyScore)) {
+                    int clampedDepth = Math.min(depth, LMR_MAX_DEPTH - 1);
+                    int clampedMoveIdx = Math.min(moveIndex, LMR_MAX_MOVES - 1);
+                    int reduction = lmrTable[clampedDepth][clampedMoveIdx];
+                    int reducedDepth = Math.max(0, newDepth - reduction);
+
+                    score = -negamax(board, reducedDepth, ply + 1, -alpha - 1, -alpha, deadlineNanos);
+
+                    if (score <= alpha) {
+                        moveIndex++;
+                        continue;
+                    }
+                }
+                // ── End LMR ──
 
                 if (isQuiet && quietCount < quietBuffers[ply].length) {
                     quietBuffers[ply][quietCount++] = move;
                 }
 
-                score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, deadlineNanos);
+                score = -negamax(board, newDepth, ply + 1, -beta, -alpha, deadlineNanos);
             } finally {
                 pathHistory.unrecord(board.getZobristKey());
                 board.unmakeMove(state);
@@ -268,6 +307,8 @@ public class Searcher {
                 }
                 break;
             }
+
+            moveIndex++;
         }
 
         if (bestMove == null) {
@@ -501,6 +542,16 @@ public class Searcher {
             return 0;
         }
         return Evaluator.PIECE_VALUES[capturedType];
+    }
+
+    // ── Late Move Reduction helpers ──
+
+    private boolean lmrEligible(int moveIndex, int depth, boolean isQuiet, boolean inCheck, int historyScore) {
+        if (moveIndex <= LMR_MOVE_INDEX_THRESHOLD) return false;
+        if (depth < LMR_MIN_DEPTH) return false;
+        if (!isQuiet) return false;
+        if (inCheck) return false;
+        return historyScore <= 0;
     }
 
     // ── Null-Move Pruning helpers ──
