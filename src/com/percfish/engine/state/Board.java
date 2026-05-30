@@ -251,6 +251,35 @@ public class Board {
         return new MoveState(move, movedPiece, capturedPiece, oldEchoPower, oldWhiteToMove);
     }
 
+    /**
+     * Performs a null move: flips the side to move, clears echo power (since no piece moved),
+     * and updates the Zobrist key accordingly. Returns a {@link MoveState} holding the prior
+     * echo power and turn for later restoration via {@link #unmakeNullMove(MoveState)}.
+     */
+    public MoveState makeNullMove() {
+        int oldEchoPower = this.echoPower;
+        boolean oldWhiteToMove = this.isWhiteToMove;
+
+        zobristKey ^= Zobrist.getSideKey();
+        zobristKey ^= Zobrist.getEchoPowerKey(echoPower);
+        echoPower = Piece.EMPTY;
+        zobristKey ^= Zobrist.getEchoPowerKey(echoPower);
+        isWhiteToMove = !isWhiteToMove;
+
+        return new MoveState(null, Piece.EMPTY, Piece.EMPTY, oldEchoPower, oldWhiteToMove);
+    }
+
+    /**
+     * Reverses a null move previously applied via {@link #makeNullMove()}.
+     */
+    public void unmakeNullMove(MoveState state) {
+        isWhiteToMove = state.oldWhiteToMove();
+        zobristKey ^= Zobrist.getSideKey();
+        zobristKey ^= Zobrist.getEchoPowerKey(echoPower);
+        echoPower = state.oldEchoPower();
+        zobristKey ^= Zobrist.getEchoPowerKey(echoPower);
+    }
+
     public void unmakeMove(MoveState state) {
         Move move = state.move();
 

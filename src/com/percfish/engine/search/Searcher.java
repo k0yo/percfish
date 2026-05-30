@@ -14,14 +14,22 @@ public class Searcher {
     private static final int MAX_KILLER_PLY = 100;
     private static final int KILLER_SLOTS = 2;
 
+    private static final int NMP_DEPTH_THRESHOLD = 3;
+    private static final int NMP_REDUCTION = 2;
+
     private final Evaluator evaluator = new Evaluator();
     private final MoveGenerator moveGenerator = new MoveGenerator();
     private final PositionHistory pathHistory = new PositionHistory();
     private final TranspositionTable tt = new TranspositionTable(64); // 64MB default
 
     // killerMoves[ply][slot] stores quiet move that caused a beta cutoff at this ply level.
-    // Slot 0 = most recent killer, Slot 1 = second most recent.
     private final Move[][] killerMoves = new Move[MAX_KILLER_PLY][KILLER_SLOTS];
+
+    // History heuristic: [side (0/1)][from (0-80)][to (0-80)] as a flat short array.
+    private final short[] historyTable = new short[2 * 81 * 81];
+
+    // Pre-allocated per-ply buffers for quiet moves (avoids allocation and cross-ply corruption in search).
+    private final Move[][] quietBuffers = new Move[MAX_KILLER_PLY][128];
 
     private volatile boolean stop = false;
     private long nodes;
@@ -47,8 +55,11 @@ public class Searcher {
     public SearchResult searchIterative(Board board, int maxDepth, long movetimeMs,
                                         Consumer<SearchResult> onDepthCompleted, PositionHistory history) {
         stop = false;
+        nodes = 0;
+        ttHits = 0;
         tt.clear();
         clearKillerMoves();
+        ageHistoryTable();
         long deadlineNanos = movetimeMs == NO_DEADLINE ? NO_DEADLINE : System.nanoTime() + Math.max(1L, movetimeMs) * 1_000_000L;
         List<Move> legalMoves = moveGenerator.generateLegalMoves(board);
 
@@ -80,8 +91,6 @@ public class Searcher {
 
     private SearchResult search(Board board, int depth, long deadlineNanos, Move pvMoveHint, PositionHistory history) {
         checkTime(deadlineNanos);
-        nodes = 0;
-        ttHits = 0;
         pathHistory.clear();
         if (history != null) {
             pathHistory.copyFrom(history);
@@ -161,9 +170,6 @@ public class Searcher {
         if (entry != null && entry.depth() >= depth) {
             ttHits++;
             int ttScore = entry.score();
-            // Adjust mate scores for distance from root
-            if (ttScore > MATE_SCORE - 1000) ttScore -= ply;
-            else if (ttScore < -MATE_SCORE + 1000) ttScore += ply;
 
             if (entry.flag() == TranspositionTable.EXACT) {
                 return ttScore;
@@ -181,11 +187,34 @@ public class Searcher {
             ttMove = entry.bestMove();
         }
 
+        int movingColor = board.isWhiteToMove ? Piece.WHITE : Piece.BLACK;
+
+        // ── Null-Move Pruning (NMP) ──
+        if (depth >= NMP_DEPTH_THRESHOLD
+                && !moveGenerator.isInCheck(board, movingColor)
+                && hasNonPawnMaterial(board, movingColor)) {
+
+            MoveState nullState = board.makeNullMove();
+            pathHistory.record(board.getZobristKey());
+            int nullScore;
+            try {
+                nullScore = -negamax(board, depth - 1 - NMP_REDUCTION, ply + 1,
+                        -beta, -beta + 1, deadlineNanos);
+            } finally {
+                pathHistory.unrecord(board.getZobristKey());
+                board.unmakeNullMove(nullState);
+            }
+
+            if (nullScore >= beta) {
+                return beta;   // cutoff – opponent doesn't need to move to refute
+            }
+        }
+        // ── End NMP ───
+
         if (depth == 0) {
             return quiescence(board, ply, 0, alpha, beta, deadlineNanos);
         }
 
-        int movingColor = board.isWhiteToMove ? Piece.WHITE : Piece.BLACK;
         List<Move> pseudoLegalMoves = moveGenerator.generatePseudoLegalMoves(board);
         if (pseudoLegalMoves.isEmpty()) {
             return -MATE_SCORE + ply;
@@ -196,10 +225,15 @@ public class Searcher {
         Move bestMove = null;
         int originalAlpha = alpha;
 
+        int quietCount = 0;
+        int sideIdx = board.isWhiteToMove ? 0 : 1;
+
         for (Move move : pseudoLegalMoves) {
             if (isKingCapture(board, move)) {
                 continue;
             }
+
+            boolean isQuiet = !isCapture(board, move) && !move.isPromotion();
 
             MoveState state = board.makeMove(move);
             pathHistory.record(board.getZobristKey());
@@ -209,6 +243,11 @@ public class Searcher {
                 if (moveGenerator.isInCheck(board, movingColor)) {
                     continue;
                 }
+
+                if (isQuiet && quietCount < quietBuffers[ply].length) {
+                    quietBuffers[ply][quietCount++] = move;
+                }
+
                 score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, deadlineNanos);
             } finally {
                 pathHistory.unrecord(board.getZobristKey());
@@ -225,6 +264,7 @@ public class Searcher {
             if (alpha >= beta) {
                 if (!isCapture(board, move) && !move.isPromotion()) {
                     storeKillerMove(ply, move);
+                    updateHistory(sideIdx, move, quietBuffers[ply], quietCount, depth);
                 }
                 break;
             }
@@ -234,10 +274,7 @@ public class Searcher {
             return -MATE_SCORE + ply;
         }
 
-        // Normalize mate scores to be relative to this node before storing in TT.
         int storeScore = bestScore;
-        if (storeScore > MATE_SCORE - 1000) storeScore += ply;
-        else if (storeScore < -MATE_SCORE + 1000) storeScore -= ply;
 
         int flag = TranspositionTable.EXACT;
         if (bestScore <= originalAlpha) flag = TranspositionTable.UPPER_BOUND;
@@ -287,7 +324,7 @@ public class Searcher {
             }
 
             boolean isCapture = isCapture(board, move);
-            if (!inCheck && isCapture && standPat + captureGain(board, move) + DELTA_PRUNING_MARGIN < alpha) {
+            if (!inCheck && isCapture && standPat + captureGain(board, move) + DELTA_PRUNING_MARGIN <= alpha) {
                 continue;
             }
 
@@ -353,6 +390,40 @@ public class Searcher {
         }
     }
 
+    // ── History heuristic helpers ──
+
+    private static int historyIdx(int side, int from, int to) {
+        return side * 81 * 81 + from * 81 + to;
+    }
+
+    private void ageHistoryTable() {
+        for (int i = 0; i < historyTable.length; i++) {
+            historyTable[i] /= 2;
+        }
+    }
+
+    private int getHistoryScore(int side, int from, int to) {
+        return historyTable[historyIdx(side, from, to)];
+    }
+
+    private void updateHistory(int side, Move bestMove, Move[] quiets, int count, int depth) {
+        int bonus = Math.min(depth * depth, 256);
+
+        for (int i = 0; i < count; i++) {
+            Move q = quiets[i];
+            if (q.equals(bestMove)) continue;
+            int idx = historyIdx(side, q.from(), q.to());
+            int v = historyTable[idx] - bonus;
+            historyTable[idx] = (short) Math.max(v, Short.MIN_VALUE);
+        }
+
+        int bestIdx = historyIdx(side, bestMove.from(), bestMove.to());
+        int v = historyTable[bestIdx] + bonus;
+        historyTable[bestIdx] = (short) Math.min(v, Short.MAX_VALUE);
+    }
+
+    // ── Move ordering ──
+
     private void orderMoves(Board board, List<Move> moves, Move pvMove, Move ttMove) {
         orderMoves(board, moves, pvMove, ttMove, 0);
     }
@@ -393,6 +464,9 @@ public class Searcher {
         if (capturedPiece != Piece.EMPTY && Piece.getType(capturedPiece) != Piece.VOID) {
             score += 1000 + (Evaluator.PIECE_VALUES[Piece.getType(capturedPiece)] * 10)
                     - Evaluator.PIECE_VALUES[Piece.getType(movedPiece)];
+        } else if (!move.isPromotion()) {
+            int sideIdx = (Piece.getColor(movedPiece) >> 5) & 1;
+            score += getHistoryScore(sideIdx, move.from(), move.to());
         }
 
         if (isSquareAttackedByPawn(board, move.to(), opponentPawnColor)) {
@@ -427,5 +501,25 @@ public class Searcher {
             return 0;
         }
         return Evaluator.PIECE_VALUES[capturedType];
+    }
+
+    // ── Null-Move Pruning helpers ──
+
+    /**
+     * Returns {@code true} if the given side has at least one piece on the board
+     * that is neither a King nor a Pawn. Used as a zugzwang guard for NMP:
+     * positions with only kings and pawns are prone to zugzwang and should
+     * not attempt null-move pruning.
+     */
+    private boolean hasNonPawnMaterial(Board board, int color) {
+        int[] squares = board.getPieceSquares(color);
+        int count = board.getPieceCount(color);
+        for (int i = 0; i < count; i++) {
+            int type = Piece.getType(board.getSquare(squares[i]));
+            if (type != Piece.KING && type != Piece.PAWN) {
+                return true;
+            }
+        }
+        return false;
     }
 }
