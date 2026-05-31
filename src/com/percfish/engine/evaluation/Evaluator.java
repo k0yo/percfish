@@ -1,25 +1,21 @@
 package com.percfish.engine.evaluation;
 
 import com.percfish.engine.state.Board;
-import com.percfish.engine.state.MoveGenerator;
 import com.percfish.engine.state.Piece;
 
 public class Evaluator {
     private static final int TEMPO_BONUS = 10;
-    private static final int MOBILITY_BONUS_PER_MOVE = 2;
     public static final int[] PIECE_VALUES = new int[16];
 
     private static final int[] PHASE_WEIGHTS = new int[16];
-    private static final int MAX_PHASE = 24;
+    private static final int MAX_PHASE = 24; // 24 = pure middle-game
 
     // Mop-up parameters
     private static final int MOPUP_MATERIAL_THRESHOLD = 300;
     private static final int MOPUP_EDGE_MULTIPLIER = 12;
     private static final int MOPUP_PROXIMITY_MULTIPLIER = 8;
 
-    private static final int CENTER_SQUARE = 40; // e5
-
-    private final MoveGenerator moveGenerator = new MoveGenerator();
+    private static final int CENTER_SQUARE = 40;
 
     static {
         PIECE_VALUES[Piece.PAWN] = 100;
@@ -56,50 +52,40 @@ public class Evaluator {
         int materialWhite = 0;
         int materialBlack = 0;
 
-        // White pieces
+        // White pieces (PSTs are from Black's perspective, so we mirror for White)
         int[] whiteSquares = board.getPieceSquares(Piece.WHITE);
         int whiteCount = board.getPieceCount(Piece.WHITE);
         for (int i = 0; i < whiteCount; i++) {
-            int piece = board.getSquare(whiteSquares[i]);
+            int sq = whiteSquares[i];
+            int piece = board.getSquare(sq);
             int type = Piece.getType(piece);
+            int mirrorSq = PST.mirrorSquare(sq);
+            int val = PIECE_VALUES[type];
+            score_mg += val + PST.mg(type, mirrorSq);
+            score_eg += val + PST.eg(type, mirrorSq);
+            materialWhite += val;
             if (type != Piece.KING) {
-                int val = PIECE_VALUES[type];
-                score_mg += val;
-                score_eg += val;
-                materialWhite += val;
                 currentPhase += PHASE_WEIGHTS[type];
             }
         }
 
-        // Black pieces
+        // Black pieces (PSTs are from Black's perspective — no mirroring needed)
         int[] blackSquares = board.getPieceSquares(Piece.BLACK);
         int blackCount = board.getPieceCount(Piece.BLACK);
         for (int i = 0; i < blackCount; i++) {
-            int piece = board.getSquare(blackSquares[i]);
+            int sq = blackSquares[i];
+            int piece = board.getSquare(sq);
             int type = Piece.getType(piece);
+            int val = PIECE_VALUES[type];
+            score_mg -= val + PST.mg(type, sq);
+            score_eg -= val + PST.eg(type, sq);
+            materialBlack += val;
             if (type != Piece.KING) {
-                int val = PIECE_VALUES[type];
-                score_mg -= val;
-                score_eg -= val;
-                materialBlack += val;
                 currentPhase += PHASE_WEIGHTS[type];
             }
         }
 
-        // Mobility bonus (MG only)
-        boolean oldWhiteToMove = board.isWhiteToMove;
-
-        board.isWhiteToMove = true;
-        int whiteMobility = moveGenerator.generatePseudoLegalMoves(board).size();
-
-        board.isWhiteToMove = false;
-        int blackMobility = moveGenerator.generatePseudoLegalMoves(board).size();
-
-        board.isWhiteToMove = oldWhiteToMove;
-
-        score_mg += (whiteMobility - blackMobility) * MOBILITY_BONUS_PER_MOVE;
-
-        // Tempo bonus (MG))
+        // Tempo bonus (MG)
         score_mg += board.isWhiteToMove ? TEMPO_BONUS : -TEMPO_BONUS;
 
         // Mop-Up heuristic (EG)
