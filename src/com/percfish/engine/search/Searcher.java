@@ -55,6 +55,15 @@ public class Searcher {
         stop = true;
     }
 
+    public void resetNewGame() {
+        stop = false;
+        nodes = 0;
+        ttHits = 0;
+        tt.clear();
+        clearKillerMoves();
+        ageHistoryTable();
+    }
+
     public SearchResult search(Board board, int depth) {
         return search(board, depth, null);
     }

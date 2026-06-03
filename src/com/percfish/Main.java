@@ -46,6 +46,10 @@ public class Main {
                 System.out.println("id author sembii");
                 System.out.println("uciok");
             }
+            case "ucinewgame" -> {
+                stopSearch();
+                searcher.resetNewGame();
+            }
             case "isready" -> System.out.println("readyok");
             case "d" -> System.out.println(board.getAsciiBoard());
             case "position" -> {
