@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Scanner;
 
 public class Main {
-    private static final String VERSION = "0.4.1";
+    private static final String VERSION = "0.5.0";
     private static final int DEFAULT_SEARCH_DEPTH = 100;
 
     private static final Board board = new Board();

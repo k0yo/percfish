@@ -3,7 +3,7 @@
 An UCI-compatible chess engine for the **Perc** variant, written in Java.
 
 ## Development Status
-Current Version: **0.4.1** _(Piece-square tables)_
+Current Version: **0.5.0** _(Piece-square tables)_
 
 ## Usage
 

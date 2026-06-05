@@ -19,15 +19,15 @@ public class Evaluator {
 
     static {
         PIECE_VALUES[Piece.PAWN] = 100;
-        PIECE_VALUES[Piece.KNIGHT] = 361;
-        PIECE_VALUES[Piece.BISHOP] = 462;
-        PIECE_VALUES[Piece.CANNON] = 213;
-        PIECE_VALUES[Piece.FALCON] = 298;
-        PIECE_VALUES[Piece.HUNTER] = 330;
-        PIECE_VALUES[Piece.ROOK] = 760;
-        PIECE_VALUES[Piece.D_HORSE] = 658;
-        PIECE_VALUES[Piece.D_KING] = 867;
-        PIECE_VALUES[Piece.ECHO] = 595;
+        PIECE_VALUES[Piece.KNIGHT] = 314;
+        PIECE_VALUES[Piece.BISHOP] = 408;
+        PIECE_VALUES[Piece.CANNON] = 203;
+        PIECE_VALUES[Piece.FALCON] = 279;
+        PIECE_VALUES[Piece.HUNTER] = 296;
+        PIECE_VALUES[Piece.ROOK] = 720;
+        PIECE_VALUES[Piece.D_HORSE] = 609;
+        PIECE_VALUES[Piece.D_KING] = 816;
+        PIECE_VALUES[Piece.ECHO] = 530;
 
         PHASE_WEIGHTS[Piece.KNIGHT] = 1;
         PHASE_WEIGHTS[Piece.BISHOP] = 1;
