@@ -13,9 +13,13 @@ public class TranspositionTable {
     public TranspositionTable(int sizeMb) {
         // Roughly each entry is: 8 (long) + 4 (int) + 4 (int) + 4 (int) + reference (8) = 28 bytes
         // Let's use 32 bytes as a safe estimate per entry.
-        int entries = (sizeMb * 1024 * 1024) / 32;
-        // Find largest power of 2 for entries to use bitmask
-        this.size = Integer.highestOneBit(entries);
+        // Use long arithmetic to avoid overflow for sizeMb >= 2048.
+        long entriesL = ((long) sizeMb * 1024 * 1024) / 32;
+        // Cap at ~2 GB worth of entries to avoid OOM.
+        long capped = Math.min(entriesL, Integer.MAX_VALUE / 32);
+        // Floor at 1 entry to avoid zero-length array.
+        int size = Math.max(1, Integer.highestOneBit((int) capped));
+        this.size = size;
         this.table = new TTEntry[size];
     }
 

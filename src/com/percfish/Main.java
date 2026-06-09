@@ -1,5 +1,6 @@
 package com.percfish;
 
+import com.percfish.engine.EngineOptions;
 import com.percfish.engine.evaluation.Evaluator;
 import com.percfish.engine.search.SearchResult;
 import com.percfish.engine.search.Searcher;
@@ -19,6 +20,7 @@ public class Main {
         positionHistory.record(board);
     }
 
+    private static final EngineOptions engineOptions = new EngineOptions();
     private static final Searcher searcher = new Searcher();
 
     private static Thread searchThread = null;
@@ -44,7 +46,13 @@ public class Main {
             case "uci" -> {
                 System.out.println("id name Percfish " + VERSION);
                 System.out.println("id author sembii");
+                for (var opt : EngineOptions.getOptionDefs()) {
+                    System.out.println(opt);
+                }
                 System.out.println("uciok");
+            }
+            case "setoption" -> {
+                handleSetoption(parts);
             }
             case "ucinewgame" -> {
                 stopSearch();
@@ -189,9 +197,15 @@ public class Main {
 
     private static void handleSearchIterative(int depth, long movetimeMs) {
         synchronized (searchLock) {
+            int threads = engineOptions.threads();
             searchThread = new Thread(() -> {
                 searchStartNanos = System.nanoTime();
-                SearchResult result = searcher.searchIterative(board, depth, movetimeMs, Main::printSearchInfo, positionHistory);
+                SearchResult result;
+                if (threads <= 1) {
+                    result = searcher.searchIterative(board, depth, movetimeMs, Main::printSearchInfo, positionHistory);
+                } else {
+                    result = searcher.searchIterativeLazySMP(board, depth, movetimeMs, Main::printSearchInfo, positionHistory, threads);
+                }
                 System.out.println("bestmove " + (result.bestMove() == null ? "0000" : result.bestMove()));
             });
             searchThread.start();
@@ -201,8 +215,64 @@ public class Main {
     private static void printSearchInfo(SearchResult result) {
         long elapsedMs = Math.max(1L, (System.nanoTime() - searchStartNanos) / 1_000_000L);
         long nps = (result.nodes() * 1000L) / elapsedMs;
-        System.out.println("info depth " + result.depth() + " score cp " + result.score() +
-                " nodes " + result.nodes() + " nps " + nps + " tthits " + result.ttHits() + " time " + elapsedMs);
+
+        if (result.multiPV().isEmpty()) {
+            // Single-PV mode
+            System.out.println("info depth " + result.depth() + " score cp " + result.score() +
+                    " nodes " + result.nodes() + " nps " + nps + " tthits " + result.ttHits() + " time " + elapsedMs);
+        } else {
+            // Multi-PV mode: emit one info line per variation
+            int pvIdx = 1;
+            for (var pv : result.multiPV()) {
+                System.out.println("info depth " + result.depth() + " score cp " + pv.score() +
+                        " multipv " + pvIdx + " pv " + pv.move());
+                pvIdx++;
+            }
+            // Also emit a summary line with node counts
+            System.out.println("info depth " + result.depth() +
+                    " nodes " + result.nodes() + " nps " + nps + " tthits " + result.ttHits() + " time " + elapsedMs);
+        }
+    }
+
+    /**
+     * Parses "setoption name [Name] value [Value]" and updates engine options.
+     * For Hash, also resizes the transposition table.
+     */
+    private static void handleSetoption(String[] parts) {
+        // parts: ["setoption", "name", "<Name>", "value", "<Value>"]
+        if (parts.length < 5) return;
+        // Find the "value" token
+        int valueIdx = -1;
+        for (int i = 2; i < parts.length; i++) {
+            if ("value".equals(parts[i])) {
+                valueIdx = i;
+                break;
+            }
+        }
+        if (valueIdx < 3 || valueIdx >= parts.length) return;
+
+        // Name is everything between "name" and "value"
+        StringBuilder nameBuilder = new StringBuilder();
+        for (int i = 2; i < valueIdx; i++) {
+            if (i > 2) nameBuilder.append(" ");
+            nameBuilder.append(parts[i]);
+        }
+        String name = nameBuilder.toString();
+
+        // Value is everything after "value"
+        StringBuilder valueBuilder = new StringBuilder();
+        for (int i = valueIdx + 1; i < parts.length; i++) {
+            if (i > valueIdx + 1) valueBuilder.append(" ");
+            valueBuilder.append(parts[i]);
+        }
+        String value = valueBuilder.toString();
+
+        engineOptions.set(name, value);
+
+        switch (name) {
+            case "Hash" -> searcher.resizeTT(engineOptions.hash());
+            case "MultiPV" -> searcher.setMultiPV(engineOptions.multiPV());
+        }
     }
 
     private static void handlePosition(String[] args) {

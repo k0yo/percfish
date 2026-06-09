@@ -1,3 +1,22 @@
 package com.percfish.engine.search;
 
-public record SearchResult(com.percfish.engine.state.Move bestMove, int score, int depth, long nodes, long ttHits) {}
+import com.percfish.engine.state.Move;
+import java.util.List;
+
+/**
+ * Holds the result of a search.
+ * For single-PV mode, {@code bestMove} and {@code score} are the primary result.
+ * For MultiPV mode, {@code multiPV} contains the top N (move, score) pairs.
+ */
+public record SearchResult(Move bestMove, int score, int depth, long nodes, long ttHits,
+                           List<PVEntry> multiPV) {
+
+    public SearchResult(Move bestMove, int score, int depth, long nodes, long ttHits) {
+        this(bestMove, score, depth, nodes, ttHits, List.of());
+    }
+
+    /**
+     * A single principal variation entry: a move and its score from white's perspective.
+     */
+    public record PVEntry(Move move, int score) {}
+}

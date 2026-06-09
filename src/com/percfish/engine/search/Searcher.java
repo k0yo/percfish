@@ -3,6 +3,7 @@ package com.percfish.engine.search;
 import com.percfish.engine.evaluation.Evaluator;
 import com.percfish.engine.state.*;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 public class Searcher {
@@ -35,32 +36,58 @@ public class Searcher {
 
     private final Evaluator evaluator = new Evaluator();
     private final MoveGenerator moveGenerator = new MoveGenerator();
-    private final PositionHistory pathHistory = new PositionHistory();
-    private final TranspositionTable tt = new TranspositionTable(64); // 64MB default
+    private TranspositionTable tt = new TranspositionTable(64); // 64MB default
 
-    // killerMoves[ply][slot] stores quiet move that caused a beta cutoff at this ply level.
-    private final Move[][] killerMoves = new Move[MAX_KILLER_PLY][KILLER_SLOTS];
+    // Shared counters (thread-safe for Lazy SMP)
+    private final AtomicLong nodes = new AtomicLong(0);
+    private final AtomicLong ttHits = new AtomicLong(0);
 
     // History heuristic: [side (0/1)][from (0-80)][to (0-80)] as a flat short array.
+    // Shared across threads; updates are synchronised.
     private final short[] historyTable = new short[2 * 81 * 81];
 
-    // Pre-allocated per-ply buffers for quiet moves (avoids allocation and cross-ply corruption in search).
-    private final Move[][] quietBuffers = new Move[MAX_KILLER_PLY][128];
-
     private volatile boolean stop = false;
-    private long nodes;
-    private long ttHits;
+
+    /**
+     * Per-thread mutable state for Lazy SMP search.
+     */
+    private static class SearchContext {
+        final Move[][] killerMoves = new Move[MAX_KILLER_PLY][KILLER_SLOTS];
+        final Move[][] quietBuffers = new Move[MAX_KILLER_PLY][128];
+        final PositionHistory pathHistory = new PositionHistory();
+        final Board board;
+        final int threadId;
+
+        SearchContext(Board board, int threadId) {
+            this.board = board;
+            this.threadId = threadId;
+        }
+
+        void clearKillerMoves() {
+            for (int ply = 0; ply < MAX_KILLER_PLY; ply++) {
+                killerMoves[ply][0] = null;
+                killerMoves[ply][1] = null;
+            }
+        }
+    }
 
     public void stop() {
         stop = true;
     }
 
+    /**
+     * Resizes the transposition table to the given size in megabytes.
+     * Called from the main thread via setoption, never during search.
+     */
+    public void resizeTT(int sizeMb) {
+        tt = new TranspositionTable(sizeMb);
+    }
+
     public void resetNewGame() {
         stop = false;
-        nodes = 0;
-        ttHits = 0;
+        nodes.set(0);
+        ttHits.set(0);
         tt.clear();
-        clearKillerMoves();
         ageHistoryTable();
     }
 
@@ -77,13 +104,22 @@ public class Searcher {
         return searchIterative(board, maxDepth, movetimeMs, onDepthCompleted, null);
     }
 
+    /**
+     * The number of principal variations to return (set via UCI MultiPV option).
+     * Defaults to 1. Must be set before calling searchIterative.
+     */
+    private int multiPV = 1;
+
+    public void setMultiPV(int n) {
+        this.multiPV = Math.max(1, n);
+    }
+
     public SearchResult searchIterative(Board board, int maxDepth, long movetimeMs,
                                         Consumer<SearchResult> onDepthCompleted, PositionHistory history) {
         stop = false;
-        nodes = 0;
-        ttHits = 0;
+        nodes.set(0);
+        ttHits.set(0);
         tt.clear();
-        clearKillerMoves();
         ageHistoryTable();
         long deadlineNanos = movetimeMs == NO_DEADLINE ? NO_DEADLINE : System.nanoTime() + Math.max(1L, movetimeMs) * 1_000_000L;
         List<Move> legalMoves = moveGenerator.generateLegalMoves(board);
@@ -102,7 +138,7 @@ public class Searcher {
                 bestCompletedResult = result;
                 pvMove = result.bestMove();
                 onDepthCompleted.accept(result);
-                
+
                 if (Math.abs(result.score()) >= MATE_SCORE - 1000) {
                     break;
                 }
@@ -114,21 +150,104 @@ public class Searcher {
         return bestCompletedResult;
     }
 
-    private SearchResult search(Board board, int depth, long deadlineNanos, Move pvMoveHint, PositionHistory history) {
-        checkTime(deadlineNanos);
-        pathHistory.clear();
-        if (history != null) {
-            pathHistory.copyFrom(history);
-        } else {
-            pathHistory.record(board.getZobristKey());
+    /**
+     * Lazy SMP parallel search. Spawns N threads that all search the same position
+     * independently, sharing only the TT and history table. Thread 0 reports info
+     * to the GUI; helper threads are silent. The best result across all threads
+     * (highest depth, then highest score) is returned.
+     */
+    public SearchResult searchIterativeLazySMP(Board board, int maxDepth, long movetimeMs,
+                                                Consumer<SearchResult> onDepthCompleted,
+                                                PositionHistory history, int numThreads) {
+        stop = false;
+        nodes.set(0);
+        ttHits.set(0);
+        tt.clear();
+        ageHistoryTable();
+        long deadlineNanos = movetimeMs == NO_DEADLINE ? NO_DEADLINE : System.nanoTime() + Math.max(1L, movetimeMs) * 1_000_000L;
+
+        List<Move> legalMoves = moveGenerator.generateLegalMoves(board);
+        if (legalMoves.isEmpty()) {
+            return new SearchResult(null, -MATE_SCORE, 0, 0, 0);
         }
+
+        // Shared best result, synchronised for thread-safe updates
+        final SearchResult[] bestResult = {new SearchResult(legalMoves.getFirst(), evaluator.evaluate(board), 0, 0, 0)};
+
+        // Create and start worker threads
+        Thread[] workers = new Thread[numThreads];
+        for (int t = 0; t < numThreads; t++) {
+            final int threadId = t;
+            workers[t] = new Thread(() -> {
+                Board threadBoard = board.copy();
+                SearchContext ctx = new SearchContext(threadBoard, threadId);
+                ctx.pathHistory.copyFrom(history != null ? history : new PositionHistory());
+                if (history == null) {
+                    ctx.pathHistory.record(threadBoard.getZobristKey());
+                }
+
+                try {
+                    for (int depth = 1; depth <= maxDepth && !stop; depth++) {
+                        SearchResult result = searchWithContext(threadBoard, depth, deadlineNanos, null, ctx);
+                        if (stop) break;
+
+                        // Update shared best result
+                        synchronized (bestResult) {
+                            if (result.depth() > bestResult[0].depth()
+                                    || (result.depth() == bestResult[0].depth() && result.score() > bestResult[0].score())) {
+                                bestResult[0] = result;
+                            }
+                        }
+
+                        // Thread 0 reports info to the GUI
+                        if (threadId == 0 && onDepthCompleted != null) {
+                            onDepthCompleted.accept(result);
+                        }
+
+                        if (Math.abs(result.score()) >= MATE_SCORE - 1000) {
+                            break;
+                        }
+                    }
+                } catch (SearchStoppedException e) {
+                    // Normal termination
+                }
+            });
+            workers[t].start();
+        }
+
+        // Wait for all threads to finish
+        for (Thread worker : workers) {
+            try {
+                worker.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                stop = true;
+            }
+        }
+
+        return bestResult[0];
+    }
+
+    private SearchResult search(Board board, int depth, long deadlineNanos, Move pvMoveHint, PositionHistory history) {
+        SearchContext ctx = new SearchContext(board, 0);
+        ctx.pathHistory.clear();
+        if (history != null) {
+            ctx.pathHistory.copyFrom(history);
+        } else {
+            ctx.pathHistory.record(board.getZobristKey());
+        }
+        return searchWithContext(board, depth, deadlineNanos, pvMoveHint, ctx);
+    }
+
+    private SearchResult searchWithContext(Board board, int depth, long deadlineNanos, Move pvMoveHint, SearchContext ctx) {
+        checkTime(deadlineNanos);
 
         int searchDepth = Math.max(1, depth);
         int movingColor = board.isWhiteToMove ? Piece.WHITE : Piece.BLACK;
         List<Move> pseudoLegalMoves = moveGenerator.generatePseudoLegalMoves(board);
 
         if (pseudoLegalMoves.isEmpty()) {
-            return new SearchResult(null, -MATE_SCORE, searchDepth, nodes, ttHits);
+            return new SearchResult(null, -MATE_SCORE, searchDepth, nodes.get(), ttHits.get());
         }
 
         // Try to get PV move from TT for root move ordering
@@ -139,53 +258,95 @@ public class Searcher {
         }
 
         orderMoves(board, pseudoLegalMoves, pvMoveHint, ttMove);
-        Move bestMove = null;
-        int bestScore = -INFINITY;
-        int alpha = -INFINITY;
 
-        for (Move move : pseudoLegalMoves) {
-            if (isKingCapture(board, move)) {
-                continue;
-            }
+        if (multiPV <= 1) {
+            // ── Single-PV root search (original behaviour) ──
+            Move bestMove = null;
+            int bestScore = -INFINITY;
+            int alpha = -INFINITY;
 
-            MoveState state = board.makeMove(move);
-            pathHistory.record(board.getZobristKey());
-            int score;
-
-            try {
-                if (moveGenerator.isInCheck(board, movingColor)) {
+            for (Move move : pseudoLegalMoves) {
+                if (isKingCapture(board, move)) {
                     continue;
                 }
-                score = -negamax(board, searchDepth - 1, 1, -INFINITY, -alpha, deadlineNanos);
-            } finally {
-                pathHistory.unrecord(board.getZobristKey());
-                board.unmakeMove(state);
+
+                MoveState state = board.makeMove(move);
+                ctx.pathHistory.record(board.getZobristKey());
+                int score;
+
+                try {
+                    if (moveGenerator.isInCheck(board, movingColor)) {
+                        continue;
+                    }
+                    score = -negamax(board, searchDepth - 1, 1, -INFINITY, -alpha, deadlineNanos, ctx);
+                } finally {
+                    ctx.pathHistory.unrecord(board.getZobristKey());
+                    board.unmakeMove(state);
+                }
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMove = move;
+                    alpha = bestScore;
+                }
             }
 
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
-                alpha = bestScore;
+            if (bestMove == null) {
+                return new SearchResult(null, -MATE_SCORE, searchDepth, nodes.get(), ttHits.get());
             }
+
+            tt.store(board.getZobristKey(), bestScore, searchDepth, TranspositionTable.EXACT, bestMove);
+            return new SearchResult(bestMove, bestScore, searchDepth, nodes.get(), ttHits.get());
+        } else {
+            // ── Multi-PV root search ──
+            java.util.ArrayList<SearchResult.PVEntry> pvList = new java.util.ArrayList<>();
+
+            for (Move move : pseudoLegalMoves) {
+                if (isKingCapture(board, move)) {
+                    continue;
+                }
+
+                MoveState state = board.makeMove(move);
+                ctx.pathHistory.record(board.getZobristKey());
+                int score;
+
+                try {
+                    if (moveGenerator.isInCheck(board, movingColor)) {
+                        continue;
+                    }
+                    // Full-width: no alpha-beta window at root for MultiPV
+                    score = -negamax(board, searchDepth - 1, 1, -INFINITY, INFINITY, deadlineNanos, ctx);
+                } finally {
+                    ctx.pathHistory.unrecord(board.getZobristKey());
+                    board.unmakeMove(state);
+                }
+
+                pvList.add(new SearchResult.PVEntry(move, score));
+            }
+
+            if (pvList.isEmpty()) {
+                return new SearchResult(null, -MATE_SCORE, searchDepth, nodes.get(), ttHits.get());
+            }
+
+            // Sort descending by score
+            pvList.sort((a, b) -> Integer.compare(b.score(), a.score()));
+
+            // Take top N
+            int n = Math.min(multiPV, pvList.size());
+            java.util.List<SearchResult.PVEntry> topN = pvList.subList(0, n);
+
+            SearchResult.PVEntry best = topN.getFirst();
+            tt.store(board.getZobristKey(), best.score(), searchDepth, TranspositionTable.EXACT, best.move());
+            return new SearchResult(best.move(), best.score(), searchDepth, nodes.get(), ttHits.get(), topN);
         }
-
-        if (bestMove == null) {
-            return new SearchResult(null, -MATE_SCORE, searchDepth, nodes, ttHits);
-        }
-
-        // Store root result in TT
-        int storeScore = bestScore;
-        tt.store(board.getZobristKey(), storeScore, searchDepth, TranspositionTable.EXACT, bestMove);
-
-        return new SearchResult(bestMove, bestScore, searchDepth, nodes, ttHits);
     }
 
-    private int negamax(Board board, int depth, int ply, int alpha, int beta, long deadlineNanos) {
+    private int negamax(Board board, int depth, int ply, int alpha, int beta, long deadlineNanos, SearchContext ctx) {
         checkTime(deadlineNanos);
-        nodes++;
+        nodes.incrementAndGet();
 
         long key = board.getZobristKey();
-        if (pathHistory.getCount(key) >= 3) {
+        if (ctx.pathHistory.getCount(key) >= 3) {
             return 0;
         }
 
@@ -193,7 +354,7 @@ public class Searcher {
         Move ttMove = null;
 
         if (entry != null && entry.depth() >= depth) {
-            ttHits++;
+            ttHits.incrementAndGet();
             int ttScore = entry.score();
 
             if (entry.flag() == TranspositionTable.EXACT) {
@@ -221,13 +382,13 @@ public class Searcher {
                 && hasNonPawnMaterial(board, movingColor)) {
 
             MoveState nullState = board.makeNullMove();
-            pathHistory.record(board.getZobristKey());
+            ctx.pathHistory.record(board.getZobristKey());
             int nullScore;
             try {
                 nullScore = -negamax(board, depth - 1 - NMP_REDUCTION, ply + 1,
-                        -beta, -beta + 1, deadlineNanos);
+                        -beta, -beta + 1, deadlineNanos, ctx);
             } finally {
-                pathHistory.unrecord(board.getZobristKey());
+                ctx.pathHistory.unrecord(board.getZobristKey());
                 board.unmakeNullMove(nullState);
             }
 
@@ -238,7 +399,7 @@ public class Searcher {
         // ── End NMP ───
 
         if (depth == 0) {
-            return quiescence(board, ply, 0, alpha, beta, deadlineNanos);
+            return quiescence(board, ply, 0, alpha, beta, deadlineNanos, ctx);
         }
 
         List<Move> pseudoLegalMoves = moveGenerator.generatePseudoLegalMoves(board);
@@ -246,7 +407,7 @@ public class Searcher {
             return -MATE_SCORE + ply;
         }
 
-        orderMoves(board, pseudoLegalMoves, null, ttMove, ply);
+        orderMoves(board, pseudoLegalMoves, null, ttMove, ply, ctx);
         int bestScore = -INFINITY;
         Move bestMove = null;
         int originalAlpha = alpha;
@@ -264,7 +425,7 @@ public class Searcher {
             boolean isQuiet = !isCapture(board, move) && !move.isPromotion();
 
             MoveState state = board.makeMove(move);
-            pathHistory.record(board.getZobristKey());
+            ctx.pathHistory.record(board.getZobristKey());
             int score;
 
             try {
@@ -283,7 +444,7 @@ public class Searcher {
                     int reduction = lmrTable[clampedDepth][clampedMoveIdx];
                     int reducedDepth = Math.max(0, newDepth - reduction);
 
-                    score = -negamax(board, reducedDepth, ply + 1, -alpha - 1, -alpha, deadlineNanos);
+                    score = -negamax(board, reducedDepth, ply + 1, -alpha - 1, -alpha, deadlineNanos, ctx);
 
                     if (score <= alpha) {
                         moveIndex++;
@@ -292,13 +453,13 @@ public class Searcher {
                 }
                 // ── End LMR ──
 
-                if (isQuiet && quietCount < quietBuffers[ply].length) {
-                    quietBuffers[ply][quietCount++] = move;
+                if (isQuiet && quietCount < ctx.quietBuffers[ply].length) {
+                    ctx.quietBuffers[ply][quietCount++] = move;
                 }
 
-                score = -negamax(board, newDepth, ply + 1, -beta, -alpha, deadlineNanos);
+                score = -negamax(board, newDepth, ply + 1, -beta, -alpha, deadlineNanos, ctx);
             } finally {
-                pathHistory.unrecord(board.getZobristKey());
+                ctx.pathHistory.unrecord(board.getZobristKey());
                 board.unmakeMove(state);
             }
 
@@ -311,8 +472,8 @@ public class Searcher {
 
             if (alpha >= beta) {
                 if (!isCapture(board, move) && !move.isPromotion()) {
-                    storeKillerMove(ply, move);
-                    updateHistory(sideIdx, move, quietBuffers[ply], quietCount, depth);
+                    storeKillerMove(ply, move, ctx);
+                    updateHistory(sideIdx, move, ctx.quietBuffers[ply], quietCount, depth);
                 }
                 break;
             }
@@ -335,13 +496,13 @@ public class Searcher {
         return bestScore;
     }
 
-    private int quiescence(Board board, int ply, int qDepth, int alpha, int beta, long deadlineNanos) {
+    private int quiescence(Board board, int ply, int qDepth, int alpha, int beta, long deadlineNanos, SearchContext ctx) {
         checkTime(deadlineNanos);
-        nodes++;
+        nodes.incrementAndGet();
 
         long key = board.getZobristKey();
         // Threefold repetition draw in quiescence as well
-        if (pathHistory.getCount(key) >= 3) {
+        if (ctx.pathHistory.getCount(key) >= 3) {
             return 0;
         }
 
@@ -365,7 +526,7 @@ public class Searcher {
         }
 
         List<Move> pseudoLegalMoves = moveGenerator.generatePseudoLegalMoves(board);
-        orderMoves(board, pseudoLegalMoves, null, null, ply);
+        orderMoves(board, pseudoLegalMoves, null, null, ply, ctx);
         boolean foundLegalMove = false;
 
         for (Move move : pseudoLegalMoves) {
@@ -379,7 +540,7 @@ public class Searcher {
             }
 
             MoveState state = board.makeMove(move);
-            pathHistory.record(board.getZobristKey());
+            ctx.pathHistory.record(board.getZobristKey());
             int score;
 
             try {
@@ -392,9 +553,9 @@ public class Searcher {
                     continue;
                 }
 
-                score = -quiescence(board, ply + 1, qDepth + 1, -beta, -alpha, deadlineNanos);
+                score = -quiescence(board, ply + 1, qDepth + 1, -beta, -alpha, deadlineNanos, ctx);
             } finally {
-                pathHistory.unrecord(board.getZobristKey());
+                ctx.pathHistory.unrecord(board.getZobristKey());
                 board.unmakeMove(state);
             }
 
@@ -421,23 +582,16 @@ public class Searcher {
         }
     }
 
-    private void storeKillerMove(int ply, Move move) {
+    private void storeKillerMove(int ply, Move move, SearchContext ctx) {
         if (ply >= MAX_KILLER_PLY) return;
         // Don't store captures or promotions as killers
         if (move.isPromotion()) return;
-        if (killerMoves[ply][0] != null && killerMoves[ply][0].equals(move)) {
+        if (ctx.killerMoves[ply][0] != null && ctx.killerMoves[ply][0].equals(move)) {
             return;
         }
 
-        killerMoves[ply][1] = killerMoves[ply][0];
-        killerMoves[ply][0] = move;
-    }
-
-    private void clearKillerMoves() {
-        for (int ply = 0; ply < MAX_KILLER_PLY; ply++) {
-            killerMoves[ply][0] = null;
-            killerMoves[ply][1] = null;
-        }
+        ctx.killerMoves[ply][1] = ctx.killerMoves[ply][0];
+        ctx.killerMoves[ply][0] = move;
     }
 
     // ── History heuristic helpers ──
@@ -475,18 +629,24 @@ public class Searcher {
     // ── Move ordering ──
 
     private void orderMoves(Board board, List<Move> moves, Move pvMove, Move ttMove) {
-        orderMoves(board, moves, pvMove, ttMove, 0);
+        orderMoves(board, moves, pvMove, ttMove, 0, null);
     }
 
-    private void orderMoves(Board board, List<Move> moves, Move pvMove, Move ttMove, int ply) {
+    private void orderMoves(Board board, List<Move> moves, Move pvMove, Move ttMove, int ply, SearchContext ctx) {
         int opponentPawnColor = board.isWhiteToMove ? Piece.BLACK : Piece.WHITE;
 
-        moves.sort((a, b) -> Integer.compare(
-                scoreMove(board, b, pvMove, ttMove, opponentPawnColor, ply),
-                scoreMove(board, a, pvMove, ttMove, opponentPawnColor, ply)));
+        try {
+            moves.sort((a, b) -> Integer.compare(
+                    scoreMove(board, b, pvMove, ttMove, opponentPawnColor, ply, ctx),
+                    scoreMove(board, a, pvMove, ttMove, opponentPawnColor, ply, ctx)));
+        } catch (IllegalArgumentException e) {
+            // Comparator inconsistency (e.g. from concurrent history table updates).
+            // Leave moves in their current order — move ordering is a performance
+            // optimisation, not a correctness requirement.
+        }
     }
 
-    private int scoreMove(Board board, Move move, Move pvMove, Move ttMove, int opponentPawnColor, int ply) {
+    private int scoreMove(Board board, Move move, Move pvMove, Move ttMove, int opponentPawnColor, int ply, SearchContext ctx) {
         if (move.equals(pvMove)) {
             return 2_000_000;
         }
@@ -494,11 +654,11 @@ public class Searcher {
             return 1_000_000;
         }
 
-        if (ply < MAX_KILLER_PLY) {
-            if (move.equals(killerMoves[ply][0])) {
+        if (ctx != null && ply < MAX_KILLER_PLY) {
+            if (move.equals(ctx.killerMoves[ply][0])) {
                 return 900_000;
             }
-            if (move.equals(killerMoves[ply][1])) {
+            if (move.equals(ctx.killerMoves[ply][1])) {
                 return 800_000;
             }
         }

@@ -40,6 +40,23 @@ public class Board {
         return zobristKey;
     }
 
+    /**
+     * Creates a deep copy of this board for use in parallel search threads.
+     */
+    public Board copy() {
+        Board copy = new Board();
+        System.arraycopy(this.squares, 0, copy.squares, 0, 81);
+        copy.isWhiteToMove = this.isWhiteToMove;
+        copy.echoPower = this.echoPower;
+        copy.zobristKey = this.zobristKey;
+        System.arraycopy(this.whitePieceSquares, 0, copy.whitePieceSquares, 0, MAX_PIECES_PER_SIDE);
+        copy.whitePieceCount = this.whitePieceCount;
+        System.arraycopy(this.blackPieceSquares, 0, copy.blackPieceSquares, 0, MAX_PIECES_PER_SIDE);
+        copy.blackPieceCount = this.blackPieceCount;
+        System.arraycopy(this.kingSquare, 0, copy.kingSquare, 0, 2);
+        return copy;
+    }
+
     public int findKing(int color) {
         int idx = color == Piece.WHITE ? 0 : 1;
         return kingSquare[idx];

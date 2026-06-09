@@ -3,7 +3,7 @@
 An UCI-compatible chess engine for the **Perc** variant, written in Java.
 
 ## Development Status
-Current Version: **0.5.0** _(Piece-square tables)_
+Current Version: **0.5.1** _(UCI option support, multi-threading)_
 
 ## Usage
 
@@ -13,7 +13,8 @@ mkdir -p out/production/percfish
 javac -d out/production/percfish src/com/percfish/Main.java \
     src/com/percfish/engine/state/*.java \
     src/com/percfish/engine/search/*.java \
-    src/com/percfish/engine/evaluation/*.java
+    src/com/percfish/engine/evaluation/*.java \
+    src/com/percfish/engine/EngineOptions.java
 ```
 
 Run:
