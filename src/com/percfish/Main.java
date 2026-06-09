@@ -57,8 +57,14 @@ public class Main {
             case "ucinewgame" -> {
                 stopSearch();
                 searcher.resetNewGame();
+                board.loadPfen(Board.START_PFEN);
+                positionHistory.clear();
+                positionHistory.record(board);
             }
-            case "isready" -> System.out.println("readyok");
+            case "isready" -> {
+                stopSearch();
+                System.out.println("readyok");
+            }
             case "d" -> System.out.println(board.getAsciiBoard());
             case "position" -> {
                 stopSearch();
