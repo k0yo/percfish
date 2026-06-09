@@ -250,7 +250,7 @@ public class Main {
                 break;
             }
         }
-//        if (valueIdx < 3) return;
+        if (valueIdx < 3) return;
 
         // Name is everything between "name" and "value"
         StringBuilder nameBuilder = new StringBuilder();
