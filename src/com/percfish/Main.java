@@ -51,9 +51,7 @@ public class Main {
                 }
                 System.out.println("uciok");
             }
-            case "setoption" -> {
-                handleSetoption(parts);
-            }
+            case "setoption" -> handleSetoption(parts);
             case "ucinewgame" -> {
                 stopSearch();
                 searcher.resetNewGame();
@@ -61,10 +59,7 @@ public class Main {
                 positionHistory.clear();
                 positionHistory.record(board);
             }
-            case "isready" -> {
-                stopSearch();
-                System.out.println("readyok");
-            }
+            case "isready" -> System.out.println("readyok");
             case "d" -> System.out.println(board.getAsciiBoard());
             case "position" -> {
                 stopSearch();
@@ -255,7 +250,7 @@ public class Main {
                 break;
             }
         }
-        if (valueIdx < 3 || valueIdx >= parts.length) return;
+//        if (valueIdx < 3) return;
 
         // Name is everything between "name" and "value"
         StringBuilder nameBuilder = new StringBuilder();
