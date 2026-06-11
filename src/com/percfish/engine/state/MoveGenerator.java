@@ -173,13 +173,47 @@ public class MoveGenerator {
             case Piece.KNIGHT -> knightAttacksSquare(startSquare, targetSquare);
             case Piece.KING -> stepAttacksSquare(startSquare, targetSquare, ALL_DIRS);
             case Piece.CANNON -> cannonAttacksSquare(startSquare, targetSquare, board);
-            case Piece.D_KING -> slidingAttacksSquare(startSquare, attackPiece, targetSquare, board)
+            case Piece.D_KING -> (canSliderReach(startSquare, targetSquare, ROOK_DIRS)
+                        && slidingAttacksSquare(startSquare, attackPiece, targetSquare, board))
                     || stepAttacksSquare(startSquare, targetSquare, BISHOP_DIRS);
-            case Piece.D_HORSE -> slidingAttacksSquare(startSquare, attackPiece, targetSquare, board)
+            case Piece.D_HORSE -> (canSliderReach(startSquare, targetSquare, BISHOP_DIRS)
+                        && slidingAttacksSquare(startSquare, attackPiece, targetSquare, board))
                     || stepAttacksSquare(startSquare, targetSquare, ROOK_DIRS);
             default -> Piece.isSlider(attackPiece)
+                    && canSliderReach(startSquare, targetSquare, getDirectionsForPiece(attackPiece))
                     && slidingAttacksSquare(startSquare, attackPiece, targetSquare, board);
         };
+    }
+
+    /**
+     * Quick alignment check: returns {@code true} if the target square lies along
+     * one of the given direction rays from the start square. This avoids expensive
+     * raycasting for sliders that cannot possibly reach the target.
+     */
+    private static boolean canSliderReach(int startSquare, int targetSquare, int[] directions) {
+        int startRank = startSquare / 9;
+        int startFile = startSquare % 9;
+        int targetRank = targetSquare / 9;
+        int targetFile = targetSquare % 9;
+        int rankDiff = targetRank - startRank;
+        int fileDiff = targetFile - startFile;
+
+        for (int dirIndex : directions) {
+            // Direction offsets:
+            //   0 = N (+9), 1 = S (-9), 2 = W (-1), 3 = E (+1)
+            //   4 = NW (+8), 5 = SE (-8), 6 = NE (+10), 7 = SW (-10)
+            switch (dirIndex) {
+                case 0: if (fileDiff == 0 && rankDiff > 0) return true; break;  // N
+                case 1: if (fileDiff == 0 && rankDiff < 0) return true; break;  // S
+                case 2: if (rankDiff == 0 && fileDiff < 0) return true; break;  // W
+                case 3: if (rankDiff == 0 && fileDiff > 0) return true; break;  // E
+                case 4: if (rankDiff > 0 && fileDiff < 0 && rankDiff == -fileDiff) return true; break;  // NW
+                case 5: if (rankDiff < 0 && fileDiff > 0 && -rankDiff == fileDiff) return true; break;  // SE
+                case 6: if (fileDiff > 0 && rankDiff == fileDiff) return true; break;   // NE
+                case 7: if (fileDiff < 0 && rankDiff == fileDiff) return true; break;   // SW
+            }
+        }
+        return false;
     }
 
     private boolean pawnAttacksSquare(int startSquare, int piece, int targetSquare) {

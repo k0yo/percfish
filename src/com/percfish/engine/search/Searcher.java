@@ -3,6 +3,7 @@ package com.percfish.engine.search;
 import com.percfish.engine.evaluation.Evaluator;
 import com.percfish.engine.state.*;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -42,9 +43,9 @@ public class Searcher {
     private final AtomicLong nodes = new AtomicLong(0);
     private final AtomicLong ttHits = new AtomicLong(0);
 
-    // History heuristic: [side (0/1)][from (0-80)][to (0-80)] as a flat short array.
-    // Shared across threads; updates are synchronised.
-    private final short[] historyTable = new short[2 * 81 * 81];
+    // History heuristic: [side (0/1)][from (0-80)][to (0-80)] as a flat array.
+    // Shared across threads; uses AtomicIntegerArray for thread-safe updates.
+    private final AtomicIntegerArray historyTable = new AtomicIntegerArray(2 * 81 * 81);
 
     private volatile boolean stop = false;
 
@@ -119,7 +120,6 @@ public class Searcher {
         stop = false;
         nodes.set(0);
         ttHits.set(0);
-        tt.clear();
         ageHistoryTable();
         long deadlineNanos = movetimeMs == NO_DEADLINE ? NO_DEADLINE : System.nanoTime() + Math.max(1L, movetimeMs) * 1_000_000L;
         List<Move> legalMoves = moveGenerator.generateLegalMoves(board);
@@ -162,7 +162,6 @@ public class Searcher {
         stop = false;
         nodes.set(0);
         ttHits.set(0);
-        tt.clear();
         ageHistoryTable();
         long deadlineNanos = movetimeMs == NO_DEADLINE ? NO_DEADLINE : System.nanoTime() + Math.max(1L, movetimeMs) * 1_000_000L;
 
@@ -366,7 +365,7 @@ public class Searcher {
             }
 
             if (alpha >= beta) {
-                return ttScore;
+                return beta;
             }
         }
         if (entry != null) {
@@ -601,13 +600,13 @@ public class Searcher {
     }
 
     private void ageHistoryTable() {
-        for (int i = 0; i < historyTable.length; i++) {
-            historyTable[i] /= 2;
+        for (int i = 0; i < historyTable.length(); i++) {
+            historyTable.set(i, historyTable.get(i) / 2);
         }
     }
 
     private int getHistoryScore(int side, int from, int to) {
-        return historyTable[historyIdx(side, from, to)];
+        return historyTable.get(historyIdx(side, from, to));
     }
 
     private void updateHistory(int side, Move bestMove, Move[] quiets, int count, int depth) {
@@ -617,13 +616,11 @@ public class Searcher {
             Move q = quiets[i];
             if (q.equals(bestMove)) continue;
             int idx = historyIdx(side, q.from(), q.to());
-            int v = historyTable[idx] - bonus;
-            historyTable[idx] = (short) Math.max(v, Short.MIN_VALUE);
+            historyTable.addAndGet(idx, -bonus);
         }
 
         int bestIdx = historyIdx(side, bestMove.from(), bestMove.to());
-        int v = historyTable[bestIdx] + bonus;
-        historyTable[bestIdx] = (short) Math.min(v, Short.MAX_VALUE);
+        historyTable.addAndGet(bestIdx, bonus);
     }
 
     // ── Move ordering ──
