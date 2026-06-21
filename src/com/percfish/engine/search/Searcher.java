@@ -59,6 +59,9 @@ public class Searcher {
         final Board board;
         final int threadId;
 
+        // Principal Variation table: pvTable[ply][ply..] holds the PV line starting at that ply.
+        final Move[][] pvTable = new Move[MAX_KILLER_PLY][MAX_KILLER_PLY];
+
         SearchContext(Board board, int threadId) {
             this.board = board;
             this.threadId = threadId;
@@ -69,6 +72,20 @@ public class Searcher {
                 killerMoves[ply][0] = null;
                 killerMoves[ply][1] = null;
             }
+        }
+
+        /**
+         * Extracts the principal variation starting at the given ply as a list of moves.
+         * The PV is terminated when a null move is encountered or the end of the table is reached.
+         */
+        List<Move> extractPV(int ply) {
+            java.util.ArrayList<Move> pv = new java.util.ArrayList<>();
+            for (int i = ply; i < MAX_KILLER_PLY; i++) {
+                Move m = pvTable[ply][i];
+                if (m == null) break;
+                pv.add(m);
+            }
+            return pv;
         }
     }
 
@@ -287,6 +304,12 @@ public class Searcher {
                     bestScore = score;
                     bestMove = move;
                     alpha = bestScore;
+
+                    // Update PV table at root (ply=0)
+                    ctx.pvTable[0][0] = move;
+                    for (int i = 1; i < MAX_KILLER_PLY; i++) {
+                        ctx.pvTable[0][i] = ctx.pvTable[1][i];
+                    }
                 }
             }
 
@@ -295,7 +318,8 @@ public class Searcher {
             }
 
             tt.store(board.getZobristKey(), bestScore, searchDepth, TranspositionTable.EXACT, bestMove);
-            return new SearchResult(bestMove, bestScore, searchDepth, nodes.get(), ttHits.get());
+            List<Move> pv = ctx.extractPV(0);
+            return new SearchResult(bestMove, bestScore, searchDepth, nodes.get(), ttHits.get(), List.of(), pv);
         } else {
             // ── Multi-PV root search ──
             java.util.ArrayList<SearchResult.PVEntry> pvList = new java.util.ArrayList<>();
@@ -320,7 +344,8 @@ public class Searcher {
                     board.unmakeMove(state);
                 }
 
-                pvList.add(new SearchResult.PVEntry(move, score));
+                List<Move> pvLine = ctx.extractPV(0);
+                pvList.add(new SearchResult.PVEntry(move, score, pvLine));
             }
 
             if (pvList.isEmpty()) {
@@ -465,6 +490,12 @@ public class Searcher {
             if (score > bestScore) {
                 bestScore = score;
                 bestMove = move;
+
+                // Update PV table: this move at pvTable[ply][ply], then copy child's PV
+                ctx.pvTable[ply][ply] = move;
+                for (int i = ply + 1; i < MAX_KILLER_PLY; i++) {
+                    ctx.pvTable[ply][i] = ctx.pvTable[ply + 1][i];
+                }
             }
 
             alpha = Math.max(alpha, score);

@@ -219,14 +219,38 @@ public class Main {
 
         if (result.multiPV().isEmpty()) {
             // Single-PV mode
-            System.out.println("info depth " + result.depth() + " score cp " + result.score() +
-                    " nodes " + result.nodes() + " nps " + nps + " tthits " + result.ttHits() + " time " + elapsedMs);
+            StringBuilder sb = new StringBuilder();
+            sb.append("info depth ").append(result.depth())
+                    .append(" score cp ").append(result.score())
+                    .append(" nodes ").append(result.nodes())
+                    .append(" nps ").append(nps)
+                    .append(" tthits ").append(result.ttHits())
+                    .append(" time ").append(elapsedMs);
+            if (!result.pv().isEmpty()) {
+                sb.append(" pv");
+                for (Move move : result.pv()) {
+                    sb.append(" ").append(move);
+                }
+            }
+            System.out.println(sb);
         } else {
             // Multi-PV mode: emit one info line per variation
             int pvIdx = 1;
             for (var pv : result.multiPV()) {
-                System.out.println("info depth " + result.depth() + " score cp " + pv.score() +
-                        " multipv " + pvIdx + " pv " + pv.move());
+                StringBuilder sb = new StringBuilder();
+                sb.append("info depth ").append(result.depth())
+                        .append(" score cp ").append(pv.score())
+                        .append(" multipv ").append(pvIdx)
+                        .append(" pv");
+                // Include the full PV line for this variation
+                if (!pv.pv().isEmpty()) {
+                    for (Move move : pv.pv()) {
+                        sb.append(" ").append(move);
+                    }
+                } else {
+                    sb.append(" ").append(pv.move());
+                }
+                System.out.println(sb);
                 pvIdx++;
             }
             // Also emit a summary line with node counts
